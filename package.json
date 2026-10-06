@@ -1,0 +1,21 @@
+{
+  "name": "@thefuturesociety/pages-kit",
+  "version": "1.0.0",
+  "description": "Zero-dependency form elements for The Future Society's staff pages: <tfs-record-form>, <tfs-picker>, <tfs-rich-text>.",
+  "type": "module",
+  "main": "./kit.js",
+  "exports": {
+    ".": "./kit.js",
+    "./kit.css": "./kit.css"
+  },
+  "files": ["LICENSE", "README.md", "form.js", "kit.css", "kit.js", "markdown.js", "save.js", "transport.js"],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/the-future-society/pages-kit.git"
+  },
+  "homepage": "https://github.com/the-future-society/pages-kit#readme",
+  "bugs": { "url": "https://github.com/the-future-society/pages-kit/issues" },
+  "publishConfig": { "access": "public", "provenance": true },
+  "scripts": { "test": "node --test \"test/*.test.js\"" }
+}

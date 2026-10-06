@@ -1,0 +1,155 @@
+/* TFS pages kit — styles. Restyle through the custom properties; never fork the file.
+   Tokens sit at `:where(:root)` (zero specificity), so a page's own `:root { --tfs-accent: … }`
+   always wins. Dark defaults follow the system unless the page sets data-theme. */
+:where(:root){
+  --tfs-font: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --tfs-ink:#1d2433; --tfs-ink-2:#3b4456; --tfs-muted:#6b7385;
+  --tfs-surface:#ffffff; --tfs-surface-2:#f4f5f8; --tfs-rule:#e3e6ec; --tfs-rule-2:#cdd2db;
+  --tfs-field-bg:#ffffff; --tfs-field-border:#c8cdd6;
+  --tfs-accent:#2f5bd3; --tfs-accent-ink:#ffffff; --tfs-accent-soft:rgba(47,91,211,.18);
+  --tfs-link:#2a52c4; --tfs-ok:#1d7a46; --tfs-warn:#9a6200; --tfs-error:#b42318;
+  --tfs-ok-bg:#e8f5ee; --tfs-warn-bg:#fdf3e1; --tfs-error-bg:#fdecea;
+  --tfs-shadow:rgba(16,24,40,.18); --tfs-radius:10px;
+}
+@media (prefers-color-scheme: dark){
+  :where(:root:not([data-theme="light"])){
+    --tfs-ink:#e7eaf0; --tfs-ink-2:#c3c8d2; --tfs-muted:#9097a6;
+    --tfs-surface:#171a21; --tfs-surface-2:#1f232c; --tfs-rule:#2c313c; --tfs-rule-2:#3a4050;
+    --tfs-field-bg:#12151b; --tfs-field-border:#3a4050;
+    --tfs-accent:#7c9cff; --tfs-accent-ink:#0d1220; --tfs-accent-soft:rgba(124,156,255,.22);
+    --tfs-link:#94afff; --tfs-ok:#5fd394; --tfs-warn:#f0b450; --tfs-error:#ff8a80;
+    --tfs-ok-bg:#16301f; --tfs-warn-bg:#33270f; --tfs-error-bg:#3a1a18;
+    --tfs-shadow:rgba(0,0,0,.5);
+  }
+}
+:where(:root[data-theme="dark"]){
+  --tfs-ink:#e7eaf0; --tfs-ink-2:#c3c8d2; --tfs-muted:#9097a6;
+  --tfs-surface:#171a21; --tfs-surface-2:#1f232c; --tfs-rule:#2c313c; --tfs-rule-2:#3a4050;
+  --tfs-field-bg:#12151b; --tfs-field-border:#3a4050;
+  --tfs-accent:#7c9cff; --tfs-accent-ink:#0d1220; --tfs-accent-soft:rgba(124,156,255,.22);
+  --tfs-link:#94afff; --tfs-ok:#5fd394; --tfs-warn:#f0b450; --tfs-error:#ff8a80;
+  --tfs-ok-bg:#16301f; --tfs-warn-bg:#33270f; --tfs-error-bg:#3a1a18;
+  --tfs-shadow:rgba(0,0,0,.5);
+}
+
+tfs-record-form, tfs-picker, tfs-rich-text{display:block;font-family:var(--tfs-font);color:var(--tfs-ink)}
+tfs-record-form *, tfs-picker *, tfs-rich-text *{box-sizing:border-box}
+
+/* form */
+.tfs-form__body{display:grid;gap:16px}
+.tfs-form__fields{display:grid;gap:16px;border:0;padding:0;margin:0;min-width:0}
+.tfs-form__fields:disabled{opacity:.72}
+.tfs-form__msg{margin:0;font-size:14px;color:var(--tfs-ink-2)}
+.tfs-form__groups{margin:0;display:grid;gap:4px;font-size:13.5px;color:var(--tfs-ink-2)}
+.tfs-form__foot{display:flex;flex-wrap:wrap;align-items:flex-start;gap:12px}
+.tfs-form__status{flex:1 1 240px;min-width:0;font-size:14px;line-height:1.45}
+.tfs-form__status:empty{display:none}
+.tfs-form__status p{margin:0 0 4px}
+.tfs-form__status.tfs-tone-ok,.tfs-form__status.tfs-tone-warn,.tfs-form__status.tfs-tone-error{
+  padding:8px 12px;border-radius:8px}
+.tfs-tone-ok{background:var(--tfs-ok-bg);color:var(--tfs-ok)}
+.tfs-tone-warn{background:var(--tfs-warn-bg);color:var(--tfs-warn)}
+.tfs-tone-error{background:var(--tfs-error-bg);color:var(--tfs-error)}
+.tfs-tone-busy{color:var(--tfs-muted)}
+.tfs-form__actions{display:flex;gap:8px;margin-top:6px}
+.tfs-link{color:var(--tfs-link);text-decoration:underline}
+
+.tfs-field{display:grid;gap:6px;min-width:0}
+.tfs-field--inline{grid-template-columns:auto 1fr;align-items:center;column-gap:8px}
+.tfs-field--inline > :not(input):not(label){grid-column:1 / -1}
+.tfs-field__label{font-size:13.5px;font-weight:600;color:var(--tfs-ink-2)}
+.tfs-field__req{color:var(--tfs-error)}
+.tfs-field__note,.tfs-field__help{margin:0;font-size:12.5px;line-height:1.4;color:var(--tfs-muted)}
+.tfs-field__ro{padding:9px 12px;border:1px dashed var(--tfs-rule-2);border-radius:8px;background:var(--tfs-surface-2);
+  font-size:14.5px;color:var(--tfs-ink-2);overflow-wrap:anywhere}
+.tfs-field__lock{margin:0;font-size:12.5px;color:var(--tfs-warn)}
+
+.tfs-input{width:100%;min-height:38px;padding:8px 11px;border:1px solid var(--tfs-field-border);border-radius:8px;
+  background:var(--tfs-field-bg);color:var(--tfs-ink);font:400 15px/1.3 var(--tfs-font)}
+.tfs-input:focus{outline:none;border-color:var(--tfs-accent);box-shadow:0 0 0 3px var(--tfs-accent-soft)}
+.tfs-textarea{min-height:auto;resize:vertical;line-height:1.45}
+.tfs-check{width:18px;height:18px;accent-color:var(--tfs-accent)}
+
+.tfs-btn{min-height:36px;padding:8px 16px;border:1px solid var(--tfs-rule-2);border-radius:8px;background:var(--tfs-surface);
+  color:var(--tfs-ink);font:600 14px/1 var(--tfs-font);cursor:pointer}
+.tfs-btn:hover{background:var(--tfs-surface-2)}
+.tfs-btn:disabled{opacity:.55;cursor:not-allowed}
+.tfs-btn--primary{background:var(--tfs-accent);border-color:var(--tfs-accent);color:var(--tfs-accent-ink)}
+.tfs-btn--primary:hover{filter:brightness(1.05);background:var(--tfs-accent)}
+.tfs-btn--quiet{background:none;border-color:transparent}
+.tfs-btn--small{min-height:30px;padding:5px 10px;font-size:13px}
+
+/* chips + picker */
+.tfs-chips{display:flex;flex-wrap:wrap;gap:6px}
+.tfs-chips[hidden]{display:none}
+.tfs-chip{display:inline-flex;align-items:center;gap:4px;max-width:100%;padding:3px 4px 3px 10px;border-radius:999px;
+  background:var(--tfs-surface-2);border:1px solid var(--tfs-rule);font-size:13.5px}
+.tfs-chip > span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tfs-chip__x,.tfs-picker__clear{border:0;background:none;color:var(--tfs-muted);font-size:16px;line-height:1;cursor:pointer;
+  padding:2px 6px;border-radius:999px}
+.tfs-chip__x:hover,.tfs-picker__clear:hover{color:var(--tfs-ink);background:var(--tfs-rule)}
+tfs-picker{position:relative}
+.tfs-picker{display:grid;gap:6px}
+.tfs-picker__row{display:flex;align-items:center;gap:4px}
+.tfs-picker__list{position:absolute;z-index:30;left:0;right:0;top:100%;margin:4px 0 0;padding:4px;list-style:none;
+  max-height:260px;overflow:auto;background:var(--tfs-surface);border:1px solid var(--tfs-rule-2);border-radius:10px;
+  box-shadow:0 10px 26px var(--tfs-shadow)}
+.tfs-picker__list[hidden]{display:none}
+.tfs-picker__opt{display:flex;justify-content:space-between;gap:10px;padding:8px 10px;border-radius:7px;cursor:pointer;font-size:14px}
+.tfs-picker__opt[aria-selected="true"],.tfs-picker__opt:hover{background:var(--tfs-surface-2)}
+.tfs-picker__hint{color:var(--tfs-muted);font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tfs-picker__msg{padding:8px 10px;font-size:13.5px;color:var(--tfs-muted)}
+
+/* rich text editor — ported from the Review Inbox's `.editor` */
+.tfs-rt{border:1px solid var(--tfs-field-border);border-radius:var(--tfs-radius);background:var(--tfs-field-bg);
+  transition:border-color .12s,box-shadow .12s}
+.tfs-rt:focus-within{border-color:var(--tfs-accent);box-shadow:0 0 0 3px var(--tfs-accent-soft)}
+.tfs-rt__bar{display:flex;flex-wrap:wrap;gap:2px;padding:5px 6px;background:var(--tfs-surface-2);
+  border-bottom:1px solid var(--tfs-rule);border-radius:9px 9px 0 0}
+.tfs-rt__bar button{min-height:32px;min-width:32px;border:1px solid transparent;background:none;border-radius:6px;
+  padding:5px 9px;font:400 13px/1 var(--tfs-font);color:var(--tfs-ink-2);cursor:pointer}
+.tfs-rt__bar button:hover{background:var(--tfs-surface);border-color:var(--tfs-rule)}
+.tfs-rt__bar button[data-cmd="bold"]{font-weight:700;font-size:14px}
+.tfs-rt__bar button[data-cmd="italic"]{font-style:italic;font-size:14px}
+.tfs-rt__bar button[data-cmd="strike"]{text-decoration:line-through;font-size:14px}
+.tfs-rt__bar button[data-cmd^="h"]{font-weight:700}
+.tfs-rt__bar button[data-cmd="ol"]{font-variant-numeric:tabular-nums}
+.tfs-rt__sep{width:1px;align-self:stretch;background:var(--tfs-rule-2);margin:5px 4px}
+.tfs-rt__ask{display:flex;flex-wrap:wrap;align-items:center;gap:6px;padding:6px 8px;border-bottom:1px solid var(--tfs-rule)}
+.tfs-rt__ask[hidden]{display:none}
+.tfs-rt__ask .tfs-input{flex:1 1 200px;min-height:32px}
+.tfs-rt__asklabel{font-size:13px;color:var(--tfs-ink-2)}
+.tfs-rt__area{width:100%;display:block;min-height:7.5em;padding:12px 14px;border:0;background:transparent;border-radius:0 0 9px 9px;
+  font:400 15px/1.6 var(--tfs-font);color:var(--tfs-ink);overflow-wrap:anywhere}
+.tfs-field__ro.tfs-rt__area{min-height:0;border-radius:8px}
+.tfs-rt__area:focus{outline:none}
+.tfs-rt__area p{margin:0 0 .75em}
+.tfs-rt__area p:last-child{margin-bottom:0}
+.tfs-rt__area h1,.tfs-rt__area h2,.tfs-rt__area h3{margin:1em 0 .45em;line-height:1.25;font-weight:700}
+.tfs-rt__area > :first-child{margin-top:0}
+.tfs-rt__area h1{font-size:1.4em}
+.tfs-rt__area h2{font-size:1.2em}
+.tfs-rt__area h3{font-size:1.05em}
+.tfs-rt__area ul{list-style:disc}
+.tfs-rt__area ol{list-style:decimal}
+.tfs-rt__area ul ul{list-style:circle}
+.tfs-rt__area ul,.tfs-rt__area ol{margin:0 0 .75em;padding-left:1.6em}
+.tfs-rt__area li{margin:.2em 0}
+.tfs-rt__area li[data-task]{list-style:none;margin-left:-1.6em;padding-left:1.8em;position:relative}
+.tfs-rt__area li[data-task] > .tick{position:absolute;left:0;top:.12em;width:1.15em;height:1.15em;
+  display:inline-flex;align-items:center;justify-content:center;border:1.5px solid var(--tfs-muted);
+  background:var(--tfs-surface);cursor:pointer;font-size:.85em;line-height:1;user-select:none;border-radius:4px}
+.tfs-rt__area li[data-task="x"] > .tick{background:var(--tfs-accent);border-color:var(--tfs-accent);color:var(--tfs-accent-ink)}
+.tfs-rt__area li[data-task="x"]{color:var(--tfs-ink-2)}
+.tfs-rt__area blockquote{margin:0 0 .75em;padding-left:.9em;border-left:3px solid var(--tfs-rule-2);color:var(--tfs-ink-2)}
+.tfs-rt__area a{color:var(--tfs-link);text-decoration:underline;cursor:pointer}
+.tfs-linkbar{position:absolute;z-index:45;display:flex;align-items:center;gap:10px;max-width:min(520px,90vw);
+  padding:7px 12px;background:var(--tfs-ink);color:var(--tfs-surface);font:400 13px/1.3 var(--tfs-font);border-radius:9px;
+  box-shadow:0 8px 22px var(--tfs-shadow)}
+.tfs-linkbar a{color:var(--tfs-surface);text-decoration:underline;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tfs-linkbar button{border:0;background:none;color:inherit;font:inherit;cursor:pointer;
+  text-decoration:underline;padding:0;white-space:nowrap;opacity:.85}
+.tfs-rt--disabled .tfs-rt__area{cursor:not-allowed}
+.tfs-rt__askerr{flex-basis:100%;margin:0;font-size:12.5px;color:var(--tfs-error)}
+.tfs-rt__askerr[hidden]{display:none}
+.tfs-linkbar__bad{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;opacity:.85}

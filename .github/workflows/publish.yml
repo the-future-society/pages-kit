@@ -1,0 +1,57 @@
+# Publish @thefuturesociety/pages-kit to npm when a v<version> tag is pushed.
+#
+# CANONICAL COPY: kit/mirror/publish.yml in TFS's private tfs-agentic-assistant repo. This repo is
+# a mirror written by scripts/sync_kit_mirror.sh there; an edit made here is overwritten by the
+# next sync.
+#
+# npm trusted publishing (OIDC): no npm token is stored anywhere. npm exchanges the job's GitHub
+# OIDC token (id-token: write) for a short-lived publish credential, and attaches a provenance
+# attestation. Requires npm CLI >= 11.5.1 and Node >= 22.14.0, a GitHub-hosted runner, and a
+# PUBLIC source repo (https://docs.npmjs.com/trusted-publishers).
+#
+# 1.0.0 was published by hand (a trusted publisher can only be set on an existing package), so
+# there is no v1.0.0 tag; the first release through this workflow is v1.0.1.
+name: Publish to npm
+on:
+  push:
+    tags: ["v*"]
+permissions:
+  contents: read
+  id-token: write
+concurrency:
+  group: publish
+  cancel-in-progress: false
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      # Pinned to full commit SHAs (resolved 2026-10-06 with `gh api repos/<action>/git/ref/tags/<tag>`).
+      # No credentials are persisted into the checkout.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # No `registry-url`: that input writes an .npmrc that reads a token variable, and this
+      # workflow must have no token path at all. npm's default registry is registry.npmjs.org.
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "22"
+          package-manager-cache: false
+      - name: Node is new enough (trusted publishing needs Node 22.14.0 or later)
+        run: node -e 'const [a,b]=process.versions.node.split(".").map(Number); if (a<22 || (a===22 && b<14)) { console.error("Node " + process.versions.node + " is older than 22.14.0"); process.exit(1); }'
+      - name: Upgrade npm (trusted publishing needs npm 11.5.1 or later)
+        run: npm install -g npm@^11.5.1 && npm --version
+      - name: Tests
+        run: node --test "test/*.test.js"
+      - name: Version lock — tag, package.json and KIT_VERSION must agree
+        run: |
+          TAG="${GITHUB_REF_NAME#v}"
+          PKG=$(node -p "require('./package.json').version")
+          KIT=$(sed -nE 's/^export const KIT_VERSION = "([^"]+)";.*/\1/p' kit.js)
+          echo "tag=$TAG package.json=$PKG KIT_VERSION=$KIT"
+          if [ -z "$KIT" ] || [ "$TAG" != "$PKG" ] || [ "$PKG" != "$KIT" ]; then
+            echo "::error::Refusing to publish: tag $GITHUB_REF_NAME, package.json $PKG and KIT_VERSION $KIT disagree"
+            exit 1
+          fi
+      - name: Publish
+        run: npm publish --provenance --access public
