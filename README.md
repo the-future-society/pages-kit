@@ -10,10 +10,15 @@ connection, never with credentials of its own.
 ## Use it in a page
 
 ```html
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@thefuturesociety/pages-kit@1/kit.css">
 <script type="module">import "https://cdn.jsdelivr.net/npm/@thefuturesociety/pages-kit@1/kit.js";</script>
 <tfs-record-form table="tasks" mode="create"></tfs-record-form>
 ```
+
+Importing `kit.js` brings the kit's styles: it adds one `<style data-tfs-kit>` element as the
+first child of `<head>`, so the page's own styles still win ties. **Do not `<link>` `kit.css`.**
+claude.ai artifact pages admit stylesheets only from the artifact itself and Google Fonts, so a
+stylesheet from a CDN is blocked and the forms render unstyled. Pages that inline the CSS
+themselves can set `data-tfs-no-kit-css` on `<html>` to skip the injection.
 
 Edit an existing record, showing only some fields:
 
