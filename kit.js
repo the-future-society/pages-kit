@@ -10,6 +10,7 @@
  *   <tfs-status-menu table="tasks" row="i-…" value="In Progress"></tfs-status-menu>
  *   <tfs-delete-task row="i-…" title="Draft the brief"></tfs-delete-task>
  *   <tfs-task-filters bar="mine,closed,snoozed"></tfs-task-filters>   (task filter bar; see tasks.js)
+ *   <tfs-kind table="tasks"></tfs-kind>   (says what kind of record a card or drawer shows)
  *
  * The artifact must declare the TFS MCP Server's four page tools in its `mcp` manifest:
  * describe_record_form, get_record_for_editing, search_records_for_picker, save_record —
@@ -23,7 +24,7 @@
  * Load from unpkg, not jsDelivr: unpkg 302s `@1` to the exact version (60-second cache) and that
  * file is immutable, so a release reaches browsers in minutes; jsDelivr caches `@1` for 7 days.
  */
-export const KIT_VERSION = "1.2.0";
+export const KIT_VERSION = "1.3.0";
 export { SERVER, KIT_CONTRACT, createTransport, kitError, checkContract, unwrap } from "./transport.js";
 export { SaveMachine, STATES } from "./save.js";
 export { mdToHtml, htmlToMd, mdInline } from "./markdown.js";
@@ -43,10 +44,12 @@ export {
   todayISO, addDays, isClosedTask, normaliseTree, markSnoozed, hideSnoozed, DUE_OPTIONS, dueMatches, taskMatcher,
   filterTree, treeCounts, countTasks, formatCount, hoursOf,
 } from "./tasks.js";
+export { TfsKind, KINDS, kindOf } from "./kind.js";
 export { TfsTaskFilters, FilterState, TOGGLES, CHOOSERS, loadUrgencyOptions, safeStorage } from "./filters.js";
 import { TfsRecordForm, TfsPicker, TfsRichText } from "./form.js";
 import { TfsStatusMenu, TfsDeleteTask } from "./actions.js";
 import { TfsTaskFilters } from "./filters.js";
+import { TfsKind } from "./kind.js";
 import { KIT_CSS } from "./kit-css.js";
 export { KIT_CSS };
 
@@ -72,7 +75,7 @@ injectKitStyles();
 
 if (globalThis.customElements) {
   for (const [name, cls] of [["tfs-rich-text", TfsRichText], ["tfs-picker", TfsPicker], ["tfs-record-form", TfsRecordForm],
-    ["tfs-status-menu", TfsStatusMenu], ["tfs-delete-task", TfsDeleteTask], ["tfs-task-filters", TfsTaskFilters]]) {
+    ["tfs-status-menu", TfsStatusMenu], ["tfs-delete-task", TfsDeleteTask], ["tfs-task-filters", TfsTaskFilters], ["tfs-kind", TfsKind]]) {
     if (!customElements.get(name)) customElements.define(name, cls);
   }
 }

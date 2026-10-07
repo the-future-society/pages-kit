@@ -130,6 +130,20 @@ narrows); `el.clear()` empties the narrowing filters (the closed/snoozed toggles
 **snooze rule** is the server's: snoozed while the snooze date is after today, and a sub-task
 inherits its parent's snooze while it has the same owner. Use `markSnoozed`; never re-write it.
 
+## `<tfs-kind>` — what kind of record this is
+
+```html
+<tfs-kind table="tasks"></tfs-kind>                    <!-- TASK -->
+<tfs-kind table="tasks" label="Sub-task"></tfs-kind>   <!-- SUB-TASK, a task's colour -->
+<tfs-kind table="kms_entries"></tfs-kind>              <!-- KMS ENTRY -->
+```
+
+Put one at the top of every record card, drawer and pop-up, so nobody has to work out whether
+they are looking at a task, a project or a KMS entry. `table` is the name the forms use; each
+kind has its own colour. `label` changes the words, not the colour. An unknown table shows in
+human form ("power_maps" → "Power map"), never raw. `kindOf(table, label)` gives the same
+`{label, tone}` for a page that draws its own markup.
+
 ## Task helpers and exact counts (`tasks.js`)
 
 | Export | What it does |

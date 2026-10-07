@@ -382,3 +382,24 @@ dialog.tfs-dialog::backdrop{background:rgba(17,20,24,.38)}
 @media (max-width:480px){.tfs-filters{position:relative}.tfs-filters__morewrap{position:static}
   .tfs-filters__menu{left:0;right:0;top:auto;margin-top:6px;min-width:0;max-width:none}
   .tfs-filters__chooser{width:100%}.tfs-filters__chooser .tfs-picker{flex:1;max-width:none}}
+
+/* ---------------------------------------------------------------------------
+   <tfs-kind> — what kind of record a card, drawer or pop-up shows (2026-10-07)
+   ------------------------------------------------------------------------ */
+.tfs-kind{display:inline-flex;align-items:center;font:600 10.5px/1 var(--tfs-font);letter-spacing:.07em;text-transform:uppercase;
+  border-radius:4px;padding:3px 6px;white-space:nowrap;vertical-align:2px;border:1px solid var(--tfs-rule);
+  background:var(--tfs-surface-2);color:var(--tfs-ink-2)}
+.tfs-kind--task{background:var(--tfs-neutral-bg);color:var(--tfs-neutral-ink);border-color:transparent}
+.tfs-kind--project{background:var(--tfs-accent-soft);color:var(--tfs-link);border-color:transparent}
+.tfs-kind--kms{background:#e2eefb;color:#1d4f86;border-color:transparent}
+.tfs-kind--impact{background:var(--tfs-ok-bg);color:var(--tfs-ok);border-color:transparent}
+.tfs-kind--okr{background:var(--tfs-warn-bg);color:var(--tfs-warn);border-color:transparent}
+.tfs-kind--update{background:var(--tfs-error-bg);color:var(--tfs-error);border-color:transparent}
+.tfs-kind--person{background:#efe7f8;color:#5b2d8a;border-color:transparent}
+.tfs-kind--event{background:#e4f3f1;color:#1d625a;border-color:transparent}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]) .tfs-kind--kms{background:#1b2c44;color:#9cc4f2}
+  :root:not([data-theme="light"]) .tfs-kind--person{background:#2c2140;color:#cdb2ee}
+  :root:not([data-theme="light"]) .tfs-kind--event{background:#16302d;color:#8fd3c9}}
+:root[data-theme="dark"] .tfs-kind--kms{background:#1b2c44;color:#9cc4f2}
+:root[data-theme="dark"] .tfs-kind--person{background:#2c2140;color:#cdb2ee}
+:root[data-theme="dark"] .tfs-kind--event{background:#16302d;color:#8fd3c9}
