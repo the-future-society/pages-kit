@@ -88,6 +88,68 @@ to sit it in a row.
 | `title` | The task's title, for the question until the server's answer arrives. |
 | `no-button` | Render nothing; the page calls the element's `open()` itself. |
 
+## `<tfs-task-filters>` — a task filter bar each viewer can extend
+
+```html
+<tfs-task-filters bar="mine,closed,snoozed" more="owner,created,urgency,due" storage-key="my-page-filters"></tfs-task-filters>
+```
+
+The page's builder decides what is always on the bar (`bar`). Each viewer adds the rest from
+**+ More filters** (`more`); what they add, and the values they set, are remembered in their own
+browser under `storage-key`. A viewer who never opens the menu sees only the builder's choice.
+
+| Filter | Kind | Meaning |
+| --- | --- | --- |
+| `mine` | toggle | Tasks the viewer owns. |
+| `closed` | toggle | Show finished tasks — the page reloads its tree with `open_only: false`. |
+| `snoozed` | toggle | Show snoozed tasks. **Off by default: snoozed tasks are hidden, as in Coda.** |
+| `owner` | chooser | One team member (the kit's people picker). |
+| `created` | chooser | Who created the task. |
+| `urgency` | chooser | One or more levels, in Coda's order, from `describe_record_form`. |
+| `due` | chooser | Overdue, due in 7 or 30 days, or no due date. |
+
+It needs **no extra tools**: the people picker uses `search_records_for_picker` and the urgency
+list `describe_record_form`, both already in every kit page's manifest. It filters rows the page
+has already loaded:
+
+```js
+import { normaliseTree, markSnoozed, hideSnoozed, filterTree } from ".../kit.js";
+const bar = document.querySelector("tfs-task-filters");
+const tree = markSnoozed(normaliseTree(await callTool("get_task_tree", { project, closed_parents: "context" })));
+function draw() {
+  const v = bar.values;                              // e.g. {snoozed: true, urgency: ["1🔴 Critical"]}
+  const shown = filterTree(v.snoozed ? tree : hideSnoozed(tree), bar.matcher({ me: viewerRowId }));
+  // render `shown`: `_hit: false` = an ancestor kept for a match below it; `_snoozedContext` = a
+  // snoozed parent kept for another owner's awake sub-tasks (show both muted)
+}
+bar.addEventListener("tfs-filters-change", draw);
+```
+
+`el.values` is what is in force; `el.matcher({me})` is one predicate (null when nothing
+narrows); `el.clear()` empties the narrowing filters (the closed/snoozed toggles stay). The
+**snooze rule** is the server's: snoozed while the snooze date is after today, and a sub-task
+inherits its parent's snooze while it has the same owner. Use `markSnoozed`; never re-write it.
+
+## Task helpers and exact counts (`tasks.js`)
+
+| Export | What it does |
+| --- | --- |
+| `normaliseTree(result)` | `get_task_tree`'s answer → nested nodes, Coda's project-header task folded away. |
+| `markSnoozed(nodes, today?)` / `hideSnoozed(nodes)` | The snooze rule, and the tree without snoozed tasks. |
+| `taskMatcher(values, {me})` / `filterTree(nodes, pred)` | Filter values → predicate; keep matches and their ancestors. |
+| `treeCounts(nodes, {showSnoozed})` | `{open, overdue, snoozed}` for a loaded tree. |
+| `countTasks(transport, args)` | **An exact count of any `search_tasks` query without fetching the rows.** |
+| `formatCount(c)` | `"12"`, or `"12+"` when the count is only a floor. |
+| `hoursOf("2 hrs")` | A task's "time required" in hours (a day is 8); 0 when blank or unknown. |
+
+**A count on a page is exact or it says it is not.** Every search tool caps its list, so
+counting the rows of a capped list gives a number that is too low, with no error. `countTasks`
+asks for one row and reads the server's `total_matched`; it resolves `{n, exact}`, and
+`exact: false` (the server cut the list and sent no total) must be shown as `n+`. For a
+dashboard, one `countTasks` per box: `{project, overdue_only: true}`,
+`{project, due_date_state: "undated"}`, `{project, status: "Complete", open_only: false}`, and
+so on. State on the page how each number is worked out.
+
 ## Events
 
 Dispatched on the element; they bubble, and cross shadow roots (composed).

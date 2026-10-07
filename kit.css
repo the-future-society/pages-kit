@@ -347,3 +347,38 @@ dialog.tfs-dialog::backdrop{background:rgba(17,20,24,.38)}
 .tfs-dialog__actions{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:8px;margin-top:20px}
 @container (max-width:360px){.tfs-dialog__actions > .tfs-btn{flex:1}}
 @media (max-width:400px){.tfs-dialog__actions > .tfs-btn{flex:1}}
+
+/* ---------------------------------------------------------------------------
+   <tfs-task-filters> — the builder's toggles, a viewer's added choosers, "+ More filters"
+   ------------------------------------------------------------------------ */
+.tfs-filters{display:grid;gap:8px;font-family:var(--tfs-font);color:var(--tfs-ink);font-size:13px}
+.tfs-filters__row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.tfs-filters__toggle{display:inline-flex;gap:6px;align-items:center;min-height:34px;padding:0 12px 0 9px;border:1px solid var(--tfs-rule-2);
+  border-radius:999px;background:var(--tfs-surface);cursor:pointer;user-select:none}
+.tfs-filters__toggle.is-on{background:var(--tfs-accent-soft);border-color:var(--tfs-accent-line)}
+.tfs-filters__toggle input{margin:0;accent-color:var(--tfs-accent)}
+.tfs-filters__morewrap{position:relative}
+.tfs-filters__menu{position:absolute;z-index:30;top:calc(100% + 6px);left:0;min-width:270px;max-width:min(340px,calc(100vw - 32px));
+  background:var(--tfs-surface);border:1px solid var(--tfs-rule-2);border-radius:var(--tfs-radius);box-shadow:0 8px 28px var(--tfs-shadow);padding:8px}
+.tfs-filters__menuhead{font-size:11.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--tfs-muted);padding:2px 6px 6px}
+.tfs-filters__option{display:grid;grid-template-columns:auto 1fr;gap:2px 8px;align-items:start;padding:7px 6px;border-radius:var(--tfs-radius-sm);cursor:pointer}
+.tfs-filters__option:hover{background:var(--tfs-surface-2)}
+.tfs-filters__option input{margin:3px 0 0;accent-color:var(--tfs-accent)}
+.tfs-filters__option small{grid-column:2;color:var(--tfs-muted);font-size:12px}
+.tfs-filters__chooser{display:inline-flex;flex-wrap:wrap;gap:6px;align-items:center;min-height:34px;padding:2px 4px 2px 10px;
+  border:1px solid var(--tfs-rule-2);border-radius:var(--tfs-radius-sm);background:var(--tfs-surface);max-width:100%}
+.tfs-filters__chooser.is-on{border-color:var(--tfs-accent-line);background:var(--tfs-accent-soft)}
+.tfs-filters__label{color:var(--tfs-muted)}
+.tfs-filters__chooser select{border:0;background:transparent;font:inherit;color:inherit;padding:4px 2px;max-width:220px}
+.tfs-filters__chooser .tfs-picker{min-width:180px;max-width:260px}
+.tfs-filters__chooser .tfs-picker__box{min-height:30px;padding:2px 6px;border-color:transparent;background:transparent}
+.tfs-filters__chips{display:inline-flex;flex-wrap:wrap;gap:4px}
+.tfs-filters__chips button{border:1px solid var(--tfs-rule-2);background:var(--tfs-surface);color:var(--tfs-ink);border-radius:999px;padding:2px 9px;font:inherit;font-size:12px;cursor:pointer}
+.tfs-filters__chips button[aria-pressed="true"]{background:var(--tfs-accent);border-color:var(--tfs-accent);color:var(--tfs-accent-ink)}
+.tfs-filters__hint{color:var(--tfs-faint);font-size:12px}
+.tfs-filters__x{border:0;background:none;color:var(--tfs-faint);cursor:pointer;font-size:16px;line-height:1;padding:2px 6px;border-radius:var(--tfs-radius-sm)}
+.tfs-filters__x:hover{color:var(--tfs-error);background:var(--tfs-surface-2)}
+/* Narrow screens: the menu spans the bar instead of hanging off the right edge. */
+@media (max-width:480px){.tfs-filters{position:relative}.tfs-filters__morewrap{position:static}
+  .tfs-filters__menu{left:0;right:0;top:auto;margin-top:6px;min-width:0;max-width:none}
+  .tfs-filters__chooser{width:100%}.tfs-filters__chooser .tfs-picker{flex:1;max-width:none}}
