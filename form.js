@@ -330,6 +330,112 @@ export const NO_CONNECTOR = {
   body: "This page saves to Coda through the TFS MCP Server connector, which isn't on your claude.ai account yet. Add it in claude.ai's settings, under Connectors, then reload this page.",
 };
 
+/* Confirmation words (kit 1.5.0, unconfirmed rows). Staff read these: Coda is the system they
+   know, so nothing here speaks of a copy, a mirror or what TFS reads. */
+export const CONFIRM_WORDS = {
+  waiting: "Saved — waiting for Coda to confirm",
+  confirmed: "Saved and confirmed by Coda",
+  pending: "Coda is still filling this in",
+  timeout: "Coda hasn't confirmed this yet — it usually does within the hour; this page will show it when you reopen it.",
+  waitingFooter: "Waiting for Coda…",
+  recreate: "Recreate",
+  reedit: "Re-edit",
+  open: "Open in Coda",
+  closeAsk: "Your change hasn't saved yet. Close anyway and lose it?",
+  keepWaiting: "Keep waiting",
+  closeAnyway: "Close anyway",
+};
+
+/** The notice while an edit waits for Coda to finish creating the record (ruling D2). */
+export function waitingCopy(noun = "record") {
+  return { title: `Coda is still creating this ${noun}`,
+    paragraphs: [["Keep this form open — your change will save automatically once Coda has finished creating the record."]] };
+}
+
+/** The notice for a change that was waiting for Coda when the page moved this form to other
+ * work, and then ended without saving (`machine` is that machine), or null when it saved. Shown
+ * in the open form so the person is never left believing it saved. */
+export function orphanNotice(machine, noun = "record") {
+  const m = machine || {};
+  const r = m.receipt || {};
+  const title = `An earlier change to ${/^[aeiou]/i.test(noun) ? "an" : "a"} ${noun} wasn't saved`;
+  if (m.state === "refused") {
+    const msgs = (r.refusals || []).map((x) => x && x.message).filter(Boolean);
+    return { tone: "warn", title, paragraphs: (msgs.length ? msgs : ["Nothing was saved."]).map((t) => [t]) };
+  }
+  if (m.state === "outcome_unknown") {
+    return { tone: "warn", title, paragraphs: [["Coda didn't confirm it. It may have gone through, so check Coda before making it again."]] };
+  }
+  if (m.state === "confirm" || m.state === "idle") {
+    return { tone: "warn", title, paragraphs: [[`Someone changed that ${noun} while Coda was creating it, so your change was held back. Open it again and redo the change if you still want it.`]] };
+  }
+  return null;
+}
+
+/** The banner for a save Coda did not keep (`confirmation.state` failed | not_in_view), with
+ * its actions: Re-edit (an update; what was sent goes back into the form), Recreate (a record
+ * Coda never added; a new one prefilled with what was sent) and Open in Coda (when a link is
+ * known). NOT IN VIEW gets no Recreate: the record IS in Coda, so recreating it would make a
+ * duplicate. `recordExists` is false when the record itself is no longer there to edit. */
+export function failureNotice(c, { recordExists = true, source = null, noun = "record" } = {}) {
+  const conf = c || {};
+  const values = conf.values_sent && typeof conf.values_sent === "object" ? conf.values_sent : {};
+  const href = safeHref(source);
+  const link = href ? [{ kind: "link", href, label: CONFIRM_WORDS.open }] : [];
+  const message = conf.message || "Coda didn't keep this save.";
+  if (conf.state === "not_in_view") {
+    return { tone: "warn", title: `Pages can't find this ${noun}`, paragraphs: [[message]], actions: link };
+  }
+  if (recordExists) {
+    return { tone: "warn", title: "Your change didn't stick", paragraphs: [[message]],
+      actions: [...(Object.keys(values).length ? [{ kind: "reedit", values }] : []), ...link] };
+  }
+  return { tone: "warn", title: `Coda didn't keep this ${noun}`, paragraphs: [[message]],
+    actions: [{ kind: "recreate", values }, ...link] };
+}
+
+/** After a create: the new record's row id when the form should stay open on it (the server
+ * put the record ahead of Coda, so it can be opened and edited at once), else null (1.3: the
+ * form starts a fresh record). */
+export function nextRowAfterCreate(receipt) {
+  const r = receipt || {};
+  return r.confirmation && typeof r.confirmation === "object" && typeof r.row_id === "string" && r.row_id ? r.row_id : null;
+}
+
+const FAILURE_STATES = new Set(["failed", "not_in_view"]);
+const BUSY_STATES = new Set(["previewing", "saving", "confirm", "waiting_for_coda"]);
+
+/**
+ * What the record form shows, for one moment: the handover's state table as data. Kit 1.5.0
+ * adds `pending` (field names to mark "Coda is still filling this in"), the `waiting_for_coda`
+ * state, the `record_failed` phase and the failure banner — all only when `confirmation` is
+ * given; without it every view is exactly 1.3's (plus `pending: []`).
+ */
+export function formView(o = {}) {
+  const view = baseView(o);
+  view.pending = [];
+  if ((o.phase || "ready") !== "ready") return view;
+  if (o.orphan) view.notices.unshift(o.orphan);
+  const state = o.state || "idle";
+  // The create-lag wait (D2): Close goes through the question, never a silent Cancel.
+  if (o.retrying && state === "previewing") view.close = { label: "Close", action: "close" };
+  if (o.closeAsk && (state === "waiting_for_coda" || o.retrying)) {
+    view.notices.push({ tone: "warn", title: null, paragraphs: [[CONFIRM_WORDS.closeAsk]],
+      actions: [{ kind: "keep_waiting" }, { kind: "close_anyway" }] });
+  }
+  const c = o.confirmation && typeof o.confirmation === "object" ? o.confirmation : null;
+  if (!c) return view;
+  if (c.state === "unconfirmed") {
+    view.pending = Array.isArray(c.pending_fields) ? c.pending_fields.slice() : [];
+    if (o.watchTimedOut && !BUSY_STATES.has(state)) {
+      view.notices.push({ tone: "info", quiet: true, paragraphs: [[CONFIRM_WORDS.timeout]] });
+    }
+  } else if (FAILURE_STATES.has(c.state) && !BUSY_STATES.has(state)) {
+    view.notices.unshift(failureNotice(c, { recordExists: true, source: o.source, noun: o.noun }));
+  }
+  return view;
+}
+
 /**
  * What the record form shows, for one moment: the handover's state table as data.
  *
@@ -343,12 +449,12 @@ export const NO_CONNECTOR = {
  * machine's. Notice `actions` are descriptors: `{kind: "link", href, label}`, `{kind: "retry"}`
  * (retry an update whose outcome is unknown), `{kind: "reload"}` (load the form again).
  */
-export function formView(o = {}) {
+function baseView(o = {}) {
   const {
     phase = "ready", state = "idle", receipt = null, isUpdate = false, tokenStale = false,
     dirtyCount = 0, missing = null, noun = "record", saveLabel = null, labelOf = (n) => n,
     shownNames = [], now = Date.now(), loadError = null, localErrors = null,
-    rereading = false, rereadFailed = false,
+    rereading = false, rereadFailed = false, confirmation = null, source = null,
   } = o;
   const r = receipt || {};
   const label = saveLabel || (isUpdate ? "Save changes" : `Add ${noun}`);
@@ -363,6 +469,11 @@ export function formView(o = {}) {
   }
   if (phase === "no_connector") {
     view.notices.push({ tone: "info", title: NO_CONNECTOR.title, paragraphs: [[NO_CONNECTOR.body]] });
+    view.save.hidden = true; return view;
+  }
+  if (phase === "record_failed") {
+    // The record is no longer there to edit, and its writer is told why (unconfirmed rows).
+    view.notices.push(failureNotice(confirmation, { recordExists: false, source, noun }));
     view.save.hidden = true; return view;
   }
   if (phase === "load_failed") {
@@ -409,6 +520,13 @@ export function formView(o = {}) {
       view.save = { ...view.save, label: "Save anyway", action: "confirm" };
       view.locked = true; return view;
     }
+    case "waiting_for_coda": {
+      const w = waitingCopy(noun);
+      view.notices.push({ tone: "info", title: w.title, paragraphs: w.paragraphs });
+      view.footer = { text: CONFIRM_WORDS.waitingFooter, spinner: true };
+      view.save = { ...view.save, label: "Saving…", busy: true, disabled: true };
+      view.locked = true; return view;
+    }
     case "saving":
       view.footer = { text: "You can close this; the save carries on." };
       view.save = { ...view.save, label: "Saving…", busy: true, disabled: true };
@@ -437,7 +555,14 @@ export function formView(o = {}) {
         view.notices.push({ tone: "info", title: "Already saved", paragraphs: [["This was already saved earlier. Nothing new was written."]] });
         view.save.hidden = true;
       } else {
-        view.footer = { text: rereadFailed ? "Saved · refresh to see the latest" : SAVED_LINE, ok: true };
+        if (r.confirmation && typeof r.confirmation === "object") {
+          // This save went in ahead of Coda: say where Coda has got to, not the old lag line.
+          const st = ((confirmation && typeof confirmation === "object" ? confirmation : r.confirmation) || {}).state;
+          if (st === "unconfirmed") view.footer = { text: CONFIRM_WORDS.waiting, ok: true };
+          else if (st === "confirmed") view.footer = { text: CONFIRM_WORDS.confirmed, ok: true };
+        } else {
+          view.footer = { text: rereadFailed ? "Saved · refresh to see the latest" : SAVED_LINE, ok: true };
+        }
         view.save.disabled = true;
       }
       const rest = warnings.filter((x) => x.code !== "already_saved").map((x) => x.message);
@@ -672,8 +797,11 @@ export class StatusMenu {
     if (r.right > vw - 8) this.el.style.left = `${Math.min(0, vw - 8 - r.right)}px`;
   }
 
-  close(focusAnchor = true) {
+  /** `guard` (set by <tfs-status-menu> while a change waits for Coda) is called INSTEAD of
+   * closing, so the person is asked first; `force` closes regardless. */
+  close(focusAnchor = true, force = false) {
     if (this.el.hidden) return;
+    if (this.guard && !force) { this.guard(); return; }
     this.el.hidden = true;
     document.removeEventListener("mousedown", this._outside, true);
     if (this.anchor) {
@@ -1570,6 +1698,12 @@ export class TfsRecordForm extends Base {
     this.form = null; this.record = null; this.machine = null;
     this._controls = new Map(); this._initial = {}; this._hidden = {}; this._meta = new Map();
     this._ready = false; this._dismissed = new Set(); this._localErrors = null;
+    /* Kit 1.5.0 (unconfirmed rows). `_createdRow`: after a create the server put ahead of
+       Coda, the form stays open on the new record (edit mode) until it is closed.
+       `_modeOverride`: "create" after Recreate. `_prefill`: values the next build starts from
+       (Recreate / Re-edit: what the failed save sent). All three clear on close or when the
+       page changes an attribute. */
+    this._createdRow = null; this._modeOverride = null; this._prefill = null;
   }
 
   get transport() { return transportOf(this); }
@@ -1584,14 +1718,83 @@ export class TfsRecordForm extends Base {
   set presets(p) { this._presets = p || {}; if (this._started) this.load(); }
 
   connectedCallback() {
-    if (this._started) return;
+    this._connected = true;
+    this._bindDialog();
+    if (this._started) {
+      // Re-attached: watch again if the record is still unconfirmed (removal stopped it).
+      if (this.machine) { this.machine.watchSaves = true; this.machine.watchConfirmation(); }
+      return;
+    }
     this._started = true;
     queueMicrotask(() => this.load());   // after the page's `configure` (see `configure`)
   }
-  attributeChangedCallback(_n, oldV, newV) { if (this._started && oldV !== newV) this.load(); }
+  /* Removed from the page: every confirmation poll stops (review I1), EXCEPT a change actively
+     waiting for Coda to finish creating the record — that one carries the person's edit, and
+     is itself capped at 10 minutes. A detached form never reloads itself (`_onConfirm`). */
+  disconnectedCallback() {
+    this._connected = false;
+    this._unbindDialog();
+    const m = this.machine;
+    if (m && !m.holdsWaitingChange) m.stopWatch();
+    // A waiting change kept alive still saves, but nobody is here to show a confirmation:
+    // no new watch after it lands.
+    if (m) m.watchSaves = false;
+    this._closeAsk = false;
+  }
+
+  /* The <dialog> the form sits in (the template's drawers). While a change waits for Coda,
+     Escape (the dialog's `cancel`) is prevented and the form asks instead; a close that cannot
+     be prevented (the page's own `close()`, or the browser forcing a repeated Escape) reopens
+     the dialog as it was, with the same question. */
+  _bindDialog() {
+    const dlg = typeof this.closest === "function" ? this.closest("dialog") : null;
+    if (dlg === this._dialog) return;
+    this._unbindDialog();
+    if (!dlg) return;
+    this._dialog = dlg;
+    this._dlgCancel = (e) => {
+      const m = this.machine;
+      if (m && m.holdsWaitingChange) { e.preventDefault(); this._askClose(); }
+    };
+    this._dlgClose = () => {
+      const m = this.machine;
+      if (!m || !m.holdsWaitingChange || dlg.open) return;
+      try { if (this._dialogModal && typeof dlg.showModal === "function") dlg.showModal(); else dlg.show(); }
+      catch { /* a dialog that cannot reopen: the question still waits in the form */ }
+      this._askClose();
+    };
+    dlg.addEventListener("cancel", this._dlgCancel);
+    dlg.addEventListener("close", this._dlgClose);
+  }
+
+  _unbindDialog() {
+    if (!this._dialog) return;
+    this._dialog.removeEventListener("cancel", this._dlgCancel);
+    this._dialog.removeEventListener("close", this._dlgClose);
+    this._dialog = null;
+  }
+
+  _noteDialogMode() {
+    const d = this._dialog;
+    if (d && d.open && typeof d.matches === "function") this._dialogModal = d.matches(":modal");
+  }
+
+  _askClose() { this._closeAsk = true; if (this.machine) this._paint(this.machine); }
+
+  attributeChangedCallback(_n, oldV, newV) {
+    if (this._started && oldV !== newV) { this._clearOverrides(); this.load(); }
+  }
+
+  _clearOverrides() { this._createdRow = null; this._modeOverride = null; this._prefill = null; }
 
   get table() { return this.getAttribute("table") || ""; }
-  get mode() { return this.getAttribute("mode") || (this.getAttribute("row") ? "edit" : "create"); }
+  get mode() {
+    if (this._createdRow) return "edit";
+    if (this._modeOverride) return this._modeOverride;
+    return this.getAttribute("mode") || (this.getAttribute("row") ? "edit" : "create");
+  }
+  /** The record this form edits: the one it just created, else the `row` attribute. */
+  get rowId() { return this._createdRow || (this._modeOverride === "create" ? null : this.getAttribute("row")); }
   get noun() { return nounOf(this.table); }
 
   /* The frame every state shares: head with ×, body, notice, footer with Close/Cancel + Save. */
@@ -1630,7 +1833,7 @@ export class TfsRecordForm extends Base {
   }
 
   /* A state with no fields (loading, failed, no connector). */
-  _shell(phase, loadError = null) {
+  _shell(phase, loadError = null, extra = {}) {
     this._ready = false;
     this._frame();
     this._formEl.toggleAttribute("aria-busy", phase === "loading");
@@ -1643,13 +1846,16 @@ export class TfsRecordForm extends Base {
       this._bodyEl.remove();
       this._notice.style.paddingTop = "10px";   // the reference's spacing when no body sits above
     }
-    this._apply(formView({ phase, loadError, noun: this.noun }));
+    this._apply(formView({ phase, loadError, noun: this.noun, ...extra }));
   }
 
   async load() {
     const seq = ++this._seq;
     const tr = this.transport;
-    const table = this.table, mode = this.mode, row = this.getAttribute("row");
+    const table = this.table, mode = this.mode, row = this.rowId;
+    // A machine waiting for Coda carries the person's change: it keeps going (and saves) even
+    // though this form moves on. Any other machine's watch stops here.
+    if (this.machine && !this.machine.holdsWaitingChange) this.machine.stopWatch();
     this.record = null;
     this._shell("loading");
     let form, rec = null;
@@ -1662,7 +1868,14 @@ export class TfsRecordForm extends Base {
         if (!row) return fail("This form needs a record to edit.", false);
         rec = await tr.call("get_record_for_editing", { table, row_id: row }, { fresh: true });
         if (seq !== this._seq) return;
-        if (rec.refused) return fail(rec.message || "That record isn't available.", false);
+        if (rec.refused) {
+          // A save Coda did not keep: its writer is told why, with Recreate (unconfirmed rows).
+          const c = rec.confirmation;
+          if (c && (c.state === "failed" || c.state === "not_in_view")) {
+            return this._shell("record_failed", null, { confirmation: c, source: rec.source || null });
+          }
+          return fail(rec.message || "That record isn't available.", false);
+        }
       }
     } catch (e) {
       if (seq !== this._seq) return;
@@ -1672,11 +1885,19 @@ export class TfsRecordForm extends Base {
         : `${(e && e.message) || "Something went wrong."} Nothing has been changed.`, !NO_RETRY.has(code));
     }
     this.form = form; this.record = rec;
-    this.machine = new SaveMachine({ transport: tr, table, rowId: mode === "edit" ? row : null,
-      rowVersion: rec ? rec.row_version : null, source: rec ? rec.source : null });
-    this.machine.onChange((m) => this._onState(m));
+    this.machine = this._newMachine({ rowId: mode === "edit" ? row : null,
+      rowVersion: rec ? rec.row_version : null, source: rec ? rec.source : null,
+      confirmation: rec ? rec.confirmation || null : null });
     this._build();
+    if (this._connected) this.machine.watchConfirmation();   // only when unconfirmed, and on the page
     this.dispatchEvent(new CustomEvent("tfs-loaded", { bubbles: true, detail: { form, record: rec } }));
+  }
+
+  _newMachine(o) {
+    const m = new SaveMachine({ transport: this.transport, table: this.table, ...o });
+    m.onChange((x) => this._onState(x));
+    m.onConfirm((e) => this._onConfirm(m, e));
+    return m;
   }
 
   _servedByName() { return Object.fromEntries((this.form.fields || []).map((f) => [f.name, f])); }
@@ -1692,9 +1913,14 @@ export class TfsRecordForm extends Base {
     const byName = this._servedByName();
     this._initial = {};
     this._hidden = {};
+    const prefill = this._prefill || {};
+    this._prefill = null;   // once: a later rebuild starts from the record again
     for (const f of served) {
       this._initial[f.name] = edit ? wireOf(f, (rec.values || {})[f.name]) : wireOf(f, null);
-      if (!edit && f.name in presets && !shown.includes(f)) this._hidden[f.name] = wireOf(f, presets[f.name]);
+      if (!edit && !shown.includes(f)) {
+        if (f.name in prefill) this._hidden[f.name] = wireOf(f, prefill[f.name]);
+        else if (f.name in presets) this._hidden[f.name] = wireOf(f, presets[f.name]);
+      }
     }
     this._frame();
     this._shown = shown;
@@ -1725,9 +1951,10 @@ export class TfsRecordForm extends Base {
     const useMore = attr == null || !String(attr).trim();
     const more = [];
     for (const f of shown) {
-      const start = edit ? (rec.values || {})[f.name]
-        : f.name in presets ? presets[f.name]
-          : (f.kind === "linked" && typeof f.default === "string") ? null : f.default;
+      const start = f.name in prefill ? prefill[f.name]
+        : edit ? (rec.values || {})[f.name]
+          : f.name in presets ? presets[f.name]
+            : (f.kind === "linked" && typeof f.default === "string") ? null : f.default;
       const ed = edit ? (rec.editable || {})[f.name] : true;
       const el = this._field(f, start, ed);
       if (useMore && f.tier === "more") more.push(el); else fieldsBox.append(el);
@@ -1951,6 +2178,9 @@ export class TfsRecordForm extends Base {
       noun: this.noun, saveLabel: this.getAttribute("save-label"), labelOf: (n) => this._labels[n] || n,
       shownNames: (this._shown || []).map((f) => f.name), localErrors: this._localErrors,
       rereading: this._rereading, rereadFailed: this._rereadFailed,
+      confirmation: m.confirmation, watchTimedOut: m.watchTimedOut,
+      retrying: m.retrying, closeAsk: !!this._closeAsk && m.holdsWaitingChange, orphan: this._orphan || null,
+      source: (this.record && this.record.source) || m.source || null,
     });
     this._apply(view);
   }
@@ -1997,26 +2227,67 @@ export class TfsRecordForm extends Base {
       } else this._describe(meta, null);
     }
     if (openMore) this._more.open = true;
+    // "Coda is still filling this in" on each field Coda itself fills after this save (U3).
+    const pending = new Set(view.pending || []);
+    for (const [name, meta] of this._meta) {
+      const old = meta.wrap.querySelector(":scope > .tfs-field__pending");
+      if (old) old.remove();
+      if (pending.has(name)) meta.wrap.append(h("p", { class: "tfs-field__pending" }, icon("sync"), CONFIRM_WORDS.pending));
+    }
   }
 
   _actionNode(a) {
     if (a.kind === "link") return codaLink(a.href, a.label);
     if (a.kind === "retry") return h("button", { type: "button", class: "tfs-btn tfs-btn--small", text: "Try again", onclick: () => this.machine.retry() });
     if (a.kind === "reload") return h("button", { type: "button", class: "tfs-btn tfs-btn--small", text: "Try again", onclick: () => this.load() });
+    if (a.kind === "keep_waiting") return h("button", { type: "button", class: "tfs-btn tfs-btn--small tfs-btn--primary", text: CONFIRM_WORDS.keepWaiting, onclick: () => { this._closeAsk = false; this._paint(this.machine); } });
+    if (a.kind === "close_anyway") return h("button", { type: "button", class: "tfs-btn tfs-btn--small", text: CONFIRM_WORDS.closeAnyway, onclick: () => {
+      this._closeAsk = false;
+      if (this.machine) this.machine.abandonWait();
+      this._requestClose(true);
+    } });
+    if (a.kind === "recreate") return h("button", { type: "button", class: "tfs-btn tfs-btn--small tfs-btn--primary", text: CONFIRM_WORDS.recreate, onclick: () => this.recreate(a.values) });
+    if (a.kind === "reedit") return h("button", { type: "button", class: "tfs-btn tfs-btn--small tfs-btn--primary", text: CONFIRM_WORDS.reedit, onclick: () => this.reedit(a.values) });
     return null;
+  }
+
+  /** A new record, prefilled with what a save Coda never kept had sent. Nothing is saved until
+   * the person presses the button. */
+  recreate(values) {
+    if (this.machine && this.machine.busy()) return;
+    this._createdRow = null; this._modeOverride = "create"; this._prefill = { ...(values || {}) };
+    this.load();
+  }
+
+  /** Put what an update Coda did not keep had sent back into the form, as unsaved changes. */
+  reedit(values) {
+    const m = this.machine;
+    if (!m || m.busy() || !this.record) return;
+    m.confirmation = null;   // acknowledged: the banner goes; the change is the person's again
+    m.reset();
+    this._prefill = { ...(values || {}) };
+    this._build();
   }
 
   /* × and the footer's Close/Cancel: a cancellable `tfs-close` (bubbles, composed). Unless the
      page cancels it, the kit closes the <dialog> the form sits in (if any) and drops unsaved
      edits, so the form opens clean next time. A save already writing carries on. */
-  _requestClose() {
+  _requestClose(force = false) {
     const m = this.machine;
+    // A change waiting for Coda would be lost: ask first, in the form (review I2).
+    if (!force && m && m.holdsWaitingChange) { this._askClose(); return; }
+    this._orphan = null;
     const dirty = this._ready && Object.keys(this.changes()).length > 0;
     if (m) m.abort();   // a check or a question is stopped: nothing is written
     const ev = new CustomEvent("tfs-close", { bubbles: true, composed: true, cancelable: true,
       detail: { dirty, state: m ? m.state : null } });
     if (!this.dispatchEvent(ev)) return;
-    if (this._ready && dirty && m && !m.busy()) {
+    if (this._createdRow || this._modeOverride) {
+      // The form opened on a record it created (or a Recreate): next time it opens as the page
+      // configured it. A machine still waiting for Coda keeps going and saves (see `load`).
+      this._clearOverrides();
+      this.load();
+    } else if (this._ready && dirty && m && !m.busy()) {
       if (m.state === "refused") m.reset();
       this._build();
     }
@@ -2025,13 +2296,82 @@ export class TfsRecordForm extends Base {
   }
 
   _onState(m) {
+    if (m !== this.machine) {
+      // A change that waited for Coda after the page moved this form on: tell the page when it
+      // lands; when it ends WITHOUT saving, say so in the open form (review I2). A clash question
+      // cannot be asked about a record the form no longer shows: it is held back and said.
+      if (m.busy() && m.state !== "confirm") return;
+      if (m.state === "saved_syncing") { this.dispatchEvent(new CustomEvent("tfs-saved", { bubbles: true, composed: true, detail: m.receipt })); return; }
+      // Only a change that waited for Coda (anything else is 1.3.1's), and never one the person
+      // chose to lose ("Close anyway").
+      if (!m.waited || m.abandoned) return;
+      if (m.state === "confirm") m.cancel();
+      const n = orphanNotice(m, this.noun);
+      if (n) { this._orphan = n; if (this.machine) this._paint(this.machine); }
+      return;
+    }
+    if (m.holdsWaitingChange) this._noteDialogMode();
+    if (m.busy()) this._orphan = null;   // a new save of this form: the earlier note is done
+    if (!m.holdsWaitingChange) this._closeAsk = false;
     this._paint(m);
-    this.dispatchEvent(new CustomEvent("tfs-state", { bubbles: true, detail: { state: m.state, receipt: m.receipt } }));
+    this.dispatchEvent(new CustomEvent("tfs-state", { bubbles: true, detail: { state: m.state, receipt: m.receipt, confirmation: m.confirmation } }));
     if (m.state === "saved_syncing") this._afterSave(m.receipt);
+  }
+
+  /* A confirmation watch settled (unconfirmed rows): `tfs-confirmed` on confirmed, so pages
+     re-read their lists; the form shows Coda's values (when nothing is being edited) or the
+     failure banner. */
+  _onConfirm(m, e) {
+    if (e.kind === "confirmed") {
+      this.dispatchEvent(new CustomEvent("tfs-confirmed", { bubbles: true, composed: true,
+        detail: { table: this.table, row_id: m.watchedRow } }));
+    }
+    if (m !== this.machine || !this._ready || !this._connected) return;   // detached: never reload
+    if (e.kind === "gone") { if (!m.busy()) this.load(); return; }
+    const rec = e.record;
+    if (rec && rec.refused) {
+      if (!m.busy()) this._shell("record_failed", null, { confirmation: e.confirmation, source: m.source || null });
+      return;
+    }
+    const dirty = Object.keys(this.changes()).length > 0;
+    if (rec && this.record && !m.busy() && !dirty && !this._rereading) {
+      this.record = rec;
+      m.refreshToken(rec.row_version);
+      if (rec.source) m.source = rec.source;
+      this._build();   // Coda's values, including what it filled in; the state is kept
+      return;
+    }
+    this._paint(m);
+  }
+
+  /* After a create the server put ahead of Coda: stay open on the new record, as an edit form,
+     so a slip can be fixed at once. The create's "Saved" carries over. If the new record can't
+     be read, the form starts a fresh record, as in 1.3. */
+  async _openCreated(row, receipt) {
+    const old = this.machine;
+    this._rereading = true;
+    this._paint(old);
+    let rec = null;
+    try { rec = await this.transport.call("get_record_for_editing", { table: this.table, row_id: row }, { fresh: true }); }
+    catch { rec = null; }
+    this._rereading = false;
+    if (this.machine !== old || old.state !== "saved_syncing") { this._paint(this.machine); return; }
+    if (!rec || rec.refused) { this._build(); return; }   // the create's own watch carries on
+    old.stopWatch();
+    this._createdRow = row; this._modeOverride = null; this._prefill = null;
+    this.record = rec;
+    const m = this._newMachine({ rowId: row, rowVersion: rec.row_version, source: rec.source || receipt.source || null,
+      confirmation: rec.confirmation || receipt.confirmation || null });
+    m.state = "saved_syncing"; m.receipt = receipt;   // no `set`: this is not a new save
+    this.machine = m;
+    this._build();
+    if (this._connected) m.watchConfirmation();
   }
 
   async _afterSave(receipt) {
     this.dispatchEvent(new CustomEvent("tfs-saved", { bubbles: true, composed: true, detail: receipt }));
+    const created = !this.record ? nextRowAfterCreate(receipt) : null;
+    if (created) return this._openCreated(created, receipt);
     if (this.record) {
       // Re-read: the server overlays our own write, so the new values and token are current.
       let rec = null;

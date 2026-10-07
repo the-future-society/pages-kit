@@ -56,12 +56,24 @@ export function syncingValue(store, key, served, now = Date.now()) {
 export function statusOutcome(state) {
   switch (state) {
     case "saved_syncing": return { close: true, message: null, hint: null };
+    // Coda is still creating the record (ruling D2): the save goes by itself once it can.
+    case "waiting_for_coda": return { close: false, message: "info", wait: true, hint: "Waiting for Coda" };
     case "confirm": return { close: false, message: "warn", ask: true, hint: null };
     case "outcome_unknown": return { close: false, message: "warn", hint: "Unconfirmed" };
     case "refused": return { close: false, message: "error", hint: null };
     default: return { close: false, message: null, hint: null };
   }
 }
+
+/** The status menu's words (kit 1.5.0). `saved(receipt)` is the quiet line after a pick: a
+ * save that went in ahead of Coda says where Coda has got to; otherwise 1.3's line. */
+export const STATUS_WORDS = {
+  saved: (r) => (r && r.confirmation && typeof r.confirmation === "object"
+    ? "Saved — waiting for Coda to confirm" : "Saved · shows on pages within a few minutes"),
+  waitingTitle: "Coda is still creating this record",
+  waitingBody: "Keep this open — this status will save automatically once Coda has finished creating the record.",
+  closeAsk: "Your change hasn't saved yet. Close anyway and lose it?",
+};
 
 export class StatusSave {
   /**
@@ -86,9 +98,12 @@ export class StatusSave {
         .then((rec) => {
           if (!rec || rec.refused) throw { code: (rec && rec.refused) || "refused", message: (rec && rec.message) || "That record isn't available." };
           // Keep a machine whose outcome is unknown: a retry of the SAME pick reuses its key.
-          if (!this.machine || this.machine.state !== "outcome_unknown") {
+          // …and one waiting for Coda to finish creating the record: it saves by itself.
+          if (!this.machine || !(this.machine.state === "outcome_unknown" || this.machine.holdsWaitingChange)) {
+            if (this.machine) this.machine.stopWatch();
             this.machine = new SaveMachine({ transport: this.transport, table: this.table, rowId: this.row,
-              rowVersion: rec.row_version, source: rec.source || null });
+              rowVersion: rec.row_version, source: rec.source || null, confirmation: rec.confirmation || null,
+              watchSaves: false });
           }
           this.source = rec.source || null;
           return rec;
@@ -169,7 +184,9 @@ export class TfsStatusMenu extends Base {
     queueMicrotask(() => this.model.options().then((o) => { this._options = o; this._render(); }).catch(() => {}));
   }
 
-  attributeChangedCallback() { if (this._built && !(this._menu && this._menu.busy)) this._render(); }
+  attributeChangedCallback() {
+    if (this._built && !(this._menu && (this._menu.busy || this._menu.guard))) this._render();
+  }
 
   _colour(v) { const o = (this._options || []).find((x) => x.value === v); return o && o.color; }
   _label(v) { const o = (this._options || []).find((x) => x.value === v); return o ? o.label : v; }
@@ -209,6 +226,8 @@ export class TfsStatusMenu extends Base {
 
   async _refresh(button) {
     if (this._menu.busy) return;
+    // A change waiting for Coda holds this menu (kit 1.5.0): a refresh would close and redraw it.
+    if (this.model.machine && this.model.machine.holdsWaitingChange) { this._waitNote(this._menu); return; }
     button.disabled = true;
     button.replaceChildren(icon("sync"), "Refreshing…");
     let res;
@@ -230,6 +249,27 @@ export class TfsStatusMenu extends Base {
 
   _toggle() { if (this._menu.isOpen) { if (!this._menu.busy) this._menu.close(true); } else this._open(); }
 
+  /* While a pick waits for Coda: the note, and a close attempt asks first (review I2). */
+  _waitNote(menu) {
+    menu.showMessage(msgEl({ tone: "info", title: STATUS_WORDS.waitingTitle, paragraphs: [[STATUS_WORDS.waitingBody]] }));
+  }
+  _askClose(menu, value) {
+    const m = this.model.machine;
+    if (!m || !m.holdsWaitingChange) { menu.guard = null; menu.close(true, true); return; }
+    const keep = h("button", { type: "button", class: "tfs-btn tfs-btn--small tfs-btn--primary", text: "Keep waiting" });
+    const lose = h("button", { type: "button", class: "tfs-btn tfs-btn--small", text: "Close anyway" });
+    keep.addEventListener("click", () => { this._waitNote(menu); menu.list.focus(); });
+    lose.addEventListener("click", () => {
+      menu.guard = null;
+      if (this._waitOff) { this._waitOff(); this._waitOff = null; }
+      m.abandonWait();
+      menu.setHint(value, "");
+      menu.close(true, true);
+      this._render();
+    });
+    menu.showMessage(msgEl({ tone: "warn", paragraphs: [[STATUS_WORDS.closeAsk]] }, [keep, lose]));
+  }
+
   async _open() {
     this.model.ready().catch(() => {});   // the token is fetched while the person looks
     if (!this._options) {
@@ -246,6 +286,8 @@ export class TfsStatusMenu extends Base {
   }
 
   async _pick(value, menu) {
+    const waiting = !!(this.model.machine && this.model.machine.holdsWaitingChange);
+    if (waiting) { this._waitNote(menu); return; }   // one change at a time: the waiting one saves first
     menu.setSaving(value);
     let st;
     try { st = await this.model.pick(value); } catch (e) {
@@ -267,11 +309,28 @@ export class TfsStatusMenu extends Base {
       this._render();
       this._btn.focus();
       const note = h("p", { class: "tfs-msg tfs-msg--quiet tfs-msg--ok", role: "status", style: "font-size:12.5px" },
-        icon("ok"), "Saved · shows on pages within a few minutes");
+        icon("ok"), STATUS_WORDS.saved(r));
       this.append(note);
       setTimeout(() => note.remove(), 4000);
       this.dispatchEvent(new CustomEvent("tfs-saved", { bubbles: true, composed: true,
         detail: { table: this.table, row: this.getAttribute("row"), field: this.field, value, receipt: r } }));
+      return;
+    }
+    if (out.wait) {
+      // The menu can be closed; another pick is ignored until the wait ends (`_pick`). When the
+      // machine leaves the wait, this settles again: saved closes it and tells the page.
+      menu.setIdle();
+      menu.setHint(value, out.hint);
+      this._waitNote(menu);
+      menu.guard = () => this._askClose(menu, value);   // closing would lose the change: ask
+      if (!this._waitOff) {
+        this._waitOff = m.onChange((mm) => {
+          if (mm.busy()) return;
+          this._waitOff(); this._waitOff = null;
+          menu.guard = null;
+          this._settle(this.model._settled(), value, menu);   // every end shows in the open menu
+        });
+      }
       return;
     }
     menu.setIdle();

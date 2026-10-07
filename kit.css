@@ -411,3 +411,9 @@ dialog.tfs-dialog::backdrop{background:rgba(17,20,24,.38)}
 .tfs-menu__foot:disabled{cursor:default;opacity:.7}
 .tfs-menu__foot .tfs-ico{width:14px;height:14px}
 .tfs-refresh-note{font-size:12.5px;max-width:420px}
+
+/* ---------------------------------------------------------------------------
+   Confirmation (kit 1.5.0, unconfirmed rows): the note on a field Coda is still filling in.
+   ------------------------------------------------------------------------ */
+.tfs-field__pending{display:flex;align-items:center;gap:6px;margin:0;font-size:12.5px;line-height:1.45;color:var(--tfs-muted);font-style:italic}
+.tfs-field__pending .tfs-ico{width:14px;height:14px;flex:none}

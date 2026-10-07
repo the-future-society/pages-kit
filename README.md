@@ -172,13 +172,51 @@ dashboard, one `countTasks` per box: `{project, overdue_only: true}`,
 `{project, due_date_state: "undated"}`, `{project, status: "Complete", open_only: false}`, and
 so on. State on the page how each number is worked out.
 
+## When Coda hasn't confirmed a save yet (1.5.0)
+
+For some people the TFS server shows a save on pages at once, before Coda has confirmed it. Its
+`save_record` receipt and `get_record_for_editing` then carry `confirmation: {state, since,
+pending_fields, message, values_sent?}`, `state` being `unconfirmed`, `confirmed`, `failed` or
+`not_in_view`. When the field is absent, the kit behaves exactly as 1.4.0 did. When it is present:
+
+- **Saved, waiting.** The form's footer says "Saved — waiting for Coda to confirm", and each
+  field Coda fills in itself (`pending_fields`) says "Coda is still filling this in". The kit
+  asks `get_record_for_editing` every 15 seconds, for at most 10 minutes. On confirmation it
+  shows Coda's values (unless the person is editing) and sends `tfs-confirmed`; after 10
+  minutes it stops and says Coda usually confirms within the hour.
+- **A new record stays open.** After a create, the form switches to editing the new record, so
+  a slip can be fixed at once. Closing it (× or Close) returns it to a blank create form.
+- **Editing a record Coda is still creating.** Coda refuses an edit for the few minutes a create
+  takes. The form says "Coda is still creating this task" and saves the change by itself once
+  Coda confirms the record: the same fields under the same idempotency key, once, so it never
+  saves twice. After 10 minutes it stops and asks the person to save again. A create is never
+  retried. The machine's state meanwhile is `waiting_for_coda` (busy). The form asks the
+  person to keep it open; pressing Close (or closing the status menu) asks "Your change hasn't
+  saved yet. Close anyway and lose it?", and Keep waiting keeps the wait. In a `<dialog>`, Escape
+  is held back for the same question, and a dialog the page closes meanwhile is reopened with it. Every end of the wait
+  (saved, not saved, a clash with someone else's change, an unknown outcome) shows in the open
+  form. If the page itself moves the form to another record mid-wait, the change still saves,
+  and if it does not, the form says so. Removing a form stops its polling, except for a change
+  that is waiting.
+- **Coda didn't keep it.** A banner gives the server's plain-words reason, with **Re-edit**
+  (an edit: what was sent goes back into the form, unsaved), **Recreate** (a record Coda never
+  added: a new-record form prefilled with what was sent) and **Open in Coda** when a link is
+  known. A record that is in Coda but not visible to pages (`not_in_view`) gets no Recreate,
+  because recreating it would make a duplicate.
+
+`<tfs-status-menu>` waits out the same create lag the same way (the menu stays open and asks
+before closing; Refresh from Coda is held until the wait ends), and does not poll after an
+ordinary pick.
+
 ## Events
 
 Dispatched on the element; they bubble, and cross shadow roots (composed).
 
 - `tfs-loaded` — (form) the form description (and the record, in edit mode) has loaded. `detail: { form, record }`.
-- `tfs-state` — (form) the save state changed. `detail: { state, receipt }`.
+- `tfs-state` — (form) the save state changed. `detail: { state, receipt, confirmation }`.
 - `tfs-saved` — a save was confirmed. From a form, `detail` is the save receipt; from `<tfs-status-menu>`, `detail: { table, row, field, value, receipt }`.
+- `tfs-confirmed` — (form) Coda confirmed a save the form was watching (see above). Re-read
+  your lists on it as well as on `tfs-saved`. `detail: { table, row_id }`.
 - `tfs-close` — (form) the person pressed × or Close/Cancel. **Cancellable**: unless the page calls `preventDefault()`, the kit closes the `<dialog>` the form sits in (if any) and drops unsaved edits. `detail: { dirty, state }`. A save already writing carries on.
 - `tfs-deleted` — (`<tfs-delete-task>`) the task was deleted. `detail: { table, row, title, receipt }`.
 

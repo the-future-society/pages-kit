@@ -201,3 +201,25 @@ test("refreshFromCoda: a refused record or an older server is reported, never th
   assert.equal(r.outcome, "unavailable");
   assert.match(r.message, /can't refresh/);
 });
+
+test("StatusSave keeps a machine whose change is waiting for Coda (or being re-sent) — never replaces it", async () => {
+  const { StatusSave } = await import("../actions.js");
+  const tr = { call: async () => ({ row_version: "v2", source: null }) };
+  const s = new StatusSave({ transport: tr, table: "tasks", row: "r-1" });
+  const held = { state: "previewing", holdsWaitingChange: true, stopWatch() {} };
+  s.machine = held;
+  await s.ready();
+  assert.equal(s.machine, held);
+});
+
+test("Refresh from Coda is held while a change waits for Coda: no re-read, the wait note instead", async () => {
+  const { TfsStatusMenu } = await import("../actions.js");
+  const el = new TfsStatusMenu();
+  let refreshed = 0, noted = 0;
+  el._model = { machine: { holdsWaitingChange: true }, refreshFromCoda: async () => { refreshed++; return { outcome: "unchanged" }; } };
+  el._menu = { busy: false };
+  el._waitNote = () => { noted++; };
+  await el._refresh({ disabled: false, replaceChildren() {} });
+  assert.equal(refreshed, 0, "a refresh would close and redraw the menu that holds the waiting change");
+  assert.equal(noted, 1);
+});
