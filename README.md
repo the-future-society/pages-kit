@@ -75,6 +75,14 @@ click outside closes it with no change.
 After a save, a page that redraws from a list read straight away gets the old status back for a
 few minutes; the chip then shows the saved status with "Saved; waiting for TFS to catch up".
 
+**Refresh from Coda.** The menu's foot carries a quiet "Refresh from Coda", for the rare case a
+change made in Coda hasn't reached the page (TFS's copy is refreshed by Coda's change
+notifications, and Coda's API can briefly answer with the old row). It calls
+`get_record_for_editing` with `refresh: true` — no extra tool — and shows what happened:
+"Updated from Coda", or that Coda had nothing newer *yet*. It never promises the record is now
+up to date. It sends **`tfs-refreshed`** (`detail: {table, row, field, outcome, value}`); a page
+that lists records should redraw that row or its list on it.
+
 ## `<tfs-delete-task>` attributes
 
 A Delete button for ONE task. It asks first, in a modal dialog: `delete_record` previews, the

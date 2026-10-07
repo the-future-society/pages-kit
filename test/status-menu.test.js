@@ -179,3 +179,25 @@ test("conflict wording: 'You', unknown writer, and the times", () => {
   assert.equal(relativeTime("2026-10-05T12:00:00Z", now), "2 days ago");
   assert.equal(relativeTime("not a date", now), "");
 });
+
+// "Refresh from Coda" (2026-10-07): one call, refresh:true, never a write; the outcome is the
+// server's, and no outcome claims the record is now up to date.
+test("refreshFromCoda asks the server to re-read the record and reports what it found", async () => {
+  const tr = fake({ get_record_for_editing: [(i) => {
+    assert.deepEqual(i, { table: "tasks", row_id: "r-1", refresh: true });
+    return { contract: 1, row_version: "v2", values: { status: "Complete" }, refreshed: { outcome: "updated", message: "Updated from Coda." } };
+  }] });
+  const s = new StatusSave({ transport: tr, table: "tasks", row: "r-1" });
+  assert.deepEqual(await s.refreshFromCoda(), { outcome: "updated", message: "Updated from Coda.", value: "Complete" });
+  assert.deepEqual(tr.calls.map((c) => c.tool), ["get_record_for_editing"], "no save_record: a refresh never writes to Coda");
+  assert.equal(tr.calls[0].opt.fresh, true);
+});
+
+test("refreshFromCoda: a refused record or an older server is reported, never thrown", async () => {
+  const gone = fake({ get_record_for_editing: [{ contract: 1, refused: "not_found", message: "That record isn't available." }] });
+  assert.equal((await new StatusSave({ transport: gone, table: "tasks", row: "r-1" }).refreshFromCoda()).outcome, "unavailable");
+  const old = fake({ get_record_for_editing: [{ contract: 1, row_version: "v1", values: { status: "In Progress" } }] });
+  const r = await new StatusSave({ transport: old, table: "tasks", row: "r-1" }).refreshFromCoda();
+  assert.equal(r.outcome, "unavailable");
+  assert.match(r.message, /can't refresh/);
+});

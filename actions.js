@@ -4,6 +4,10 @@
  *   <tfs-status-menu table="tasks" row="ROW-ID" value="In Progress"></tfs-status-menu>
  *   <tfs-delete-task row="ROW-ID" title="Draft the brief"></tfs-delete-task>
  *
+ * The status menu's foot carries a quiet "Refresh from Coda" (2026-10-07): get_record_for_editing
+ * with `refresh: true` re-reads the record from Coda into TFS's copy, for a change made in Coda
+ * that hasn't reached the page. It sends `tfs-refreshed` so the page can redraw its lists.
+ *
  * THE STATUS MENU SAVES ON PICK. No Save button: picking a different status loads the record
  * (for its `row_version`), previews the save, and saves at once unless the preview says someone
  * changed the record since — then it asks, inside the menu. It is the form's save machine
@@ -103,6 +107,21 @@ export class StatusSave {
   }
 
   async confirm() { await this.machine.confirm(); return this._settled(); }
+
+  /** "Refresh from Coda": the server re-reads the record from Coda into TFS's copy, then answers
+   * with it. Resolves `{outcome, message, value}` — `value` is the field as TFS now holds it.
+   * Outcomes: updated | unchanged | not_returned | unavailable. A re-read can itself be stale
+   * (Coda's API lags its own app), so nothing here claims the record is now up to date. */
+  async refreshFromCoda() {
+    const rec = await this.transport.call("get_record_for_editing", { table: this.table, row_id: this.row, refresh: true }, { fresh: true });
+    if (!rec || rec.refused) {
+      return { outcome: "unavailable", message: (rec && rec.message) || "That record isn't available.", value: null };
+    }
+    this._rec = null;   // the next pick loads a fresh row_version
+    const r = rec.refreshed || { outcome: "unavailable", message: "This page's TFS server can't refresh from Coda yet." };
+    const v = rec.values ? rec.values[this.field] : null;
+    return { outcome: r.outcome, message: r.message, value: v && typeof v === "object" ? (v.value ?? v.label ?? null) : (v ?? null) };
+  }
   cancel() { if (this.machine) this.machine.cancel(); }
 
   _settled() {
@@ -179,7 +198,34 @@ export class TfsStatusMenu extends Base {
     btn.addEventListener("click", () => this._toggle());
     btn.addEventListener("keydown", (e) => { if (e.key === "ArrowDown" && !this._menu.isOpen) { e.preventDefault(); this._open(); } });
     const face = syncing ? h("span", { class: "tfs-status-note" }, btn, "Saved; waiting for TFS to catch up") : btn;
+    // Out of the way on purpose: a quiet line at the foot of the menu, for the rare case a change
+    // made in Coda hasn't reached the page. Not a toolbar button.
+    const refresh = h("button", { type: "button", class: "tfs-menu__foot",
+      title: "Read this record again from Coda, if a change made there hasn't reached this page" }, icon("sync"), "Refresh from Coda");
+    refresh.addEventListener("click", () => this._refresh(refresh));
+    this._menu.el.append(refresh);
     this.replaceChildren(face, this._menu.el);
+  }
+
+  async _refresh(button) {
+    if (this._menu.busy) return;
+    button.disabled = true;
+    button.replaceChildren(icon("sync"), "Refreshing…");
+    let res;
+    try { res = await this.model.refreshFromCoda(); } catch (e) {
+      res = { outcome: "unavailable", message: (e && e.message) || "Couldn't reach TFS just now.", value: null };
+    }
+    const changed = res.value != null && res.value !== this.getAttribute("value");
+    this._menu.close(false);
+    if (changed) { recentSaves.delete(this.key); this.setAttribute("value", res.value); }
+    this._render();
+    const tone = res.outcome === "updated" ? "ok" : res.outcome === "unavailable" ? "warn" : "info";
+    const note = h("p", { class: `tfs-msg tfs-msg--quiet tfs-msg--${tone} tfs-refresh-note`, role: "status" }, icon(tone === "warn" ? "warn" : tone === "ok" ? "ok" : "info"), res.message);
+    this.append(note);
+    setTimeout(() => note.remove(), res.outcome === "updated" ? 4000 : 9000);
+    if (this._btn) this._btn.focus();
+    this.dispatchEvent(new CustomEvent("tfs-refreshed", { bubbles: true, composed: true,
+      detail: { table: this.table, row: this.getAttribute("row"), field: this.field, outcome: res.outcome, value: res.value } }));
   }
 
   _toggle() { if (this._menu.isOpen) { if (!this._menu.busy) this._menu.close(true); } else this._open(); }

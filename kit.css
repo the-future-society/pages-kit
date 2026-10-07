@@ -403,3 +403,11 @@ dialog.tfs-dialog::backdrop{background:rgba(17,20,24,.38)}
 :root[data-theme="dark"] .tfs-kind--kms{background:#1b2c44;color:#9cc4f2}
 :root[data-theme="dark"] .tfs-kind--person{background:#2c2140;color:#cdb2ee}
 :root[data-theme="dark"] .tfs-kind--event{background:#16302d;color:#8fd3c9}
+
+/* "Refresh from Coda" at the foot of the status menu — quiet and out of the way (2026-10-07) */
+.tfs-menu__foot{display:flex;align-items:center;gap:8px;width:100%;margin-top:4px;padding:8px 10px 4px;border:0;border-top:1px solid var(--tfs-rule);
+  background:none;color:var(--tfs-muted);font:500 12px/1.3 var(--tfs-font);cursor:pointer;text-align:left;border-radius:0 0 8px 8px}
+.tfs-menu__foot:hover{color:var(--tfs-ink);background:var(--tfs-surface-2)}
+.tfs-menu__foot:disabled{cursor:default;opacity:.7}
+.tfs-menu__foot .tfs-ico{width:14px;height:14px}
+.tfs-refresh-note{font-size:12.5px;max-width:420px}

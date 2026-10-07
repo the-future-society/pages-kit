@@ -24,7 +24,7 @@
  * Load from unpkg, not jsDelivr: unpkg 302s `@1` to the exact version (60-second cache) and that
  * file is immutable, so a release reaches browsers in minutes; jsDelivr caches `@1` for 7 days.
  */
-export const KIT_VERSION = "1.3.1";
+export const KIT_VERSION = "1.4.0";
 export { SERVER, KIT_CONTRACT, createTransport, kitError, checkContract, unwrap } from "./transport.js";
 export { SaveMachine, STATES } from "./save.js";
 export { mdToHtml, htmlToMd, mdInline } from "./markdown.js";
