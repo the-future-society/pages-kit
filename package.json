@@ -1,14 +1,14 @@
 {
   "name": "@thefuturesociety/pages-kit",
-  "version": "1.0.1",
-  "description": "Zero-dependency form elements for The Future Society's staff pages: <tfs-record-form>, <tfs-picker>, <tfs-rich-text>.",
+  "version": "1.1.0",
+  "description": "Zero-dependency form elements for The Future Society's staff pages: <tfs-record-form>, <tfs-picker>, <tfs-rich-text>, <tfs-status-menu>, <tfs-delete-task>.",
   "type": "module",
   "main": "./kit.js",
   "exports": {
     ".": "./kit.js",
     "./kit.css": "./kit.css"
   },
-  "files": ["LICENSE", "README.md", "form.js", "kit-css.js", "kit.css", "kit.js", "markdown.js", "save.js", "transport.js"],
+  "files": ["LICENSE", "README.md", "actions.js", "form.js", "icons.js", "kit-css.js", "kit.css", "kit.js", "markdown.js", "save.js", "status-colour.js", "transport.js"],
   "license": "MIT",
   "repository": {
     "type": "git",

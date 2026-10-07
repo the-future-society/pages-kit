@@ -12,7 +12,7 @@ test("package version and KIT_VERSION agree", () => {
 test("the package is publishable and ships exactly the kit files", () => {
   assert.equal(pkg.private, undefined);
   assert.equal(pkg.publishConfig.access, "public");
-  assert.deepEqual([...pkg.files].sort(), ["LICENSE", "README.md", "form.js", "kit-css.js", "kit.css", "kit.js", "markdown.js", "save.js", "transport.js"].sort());
+  assert.deepEqual([...pkg.files].sort(), ["LICENSE", "README.md", "actions.js", "form.js", "icons.js", "kit-css.js", "kit.css", "kit.js", "markdown.js", "save.js", "status-colour.js", "transport.js"].sort());
 });
 
 test("no runtime dependencies", () => {

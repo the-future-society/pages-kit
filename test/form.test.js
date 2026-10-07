@@ -6,7 +6,8 @@ import {
   dirtyFields, selectFields, wireOf, payloadFor, stateView, optionsWithCurrent, groupLines,
   richTextValue, TOOLBAR_COMMANDS, controlValue, textControlTag, safeHref,
   allowedLinkHref, LINK_REFUSED, badInputMessage, isEditable,
-  initialAfterUnreadSave, formLocked, lockedByFieldset,
+  initialAfterUnreadSave, formLocked, lockedByFieldset, formView, countLabel, addPhrase,
+  missingRequired, refusalView, initials, markMatch, isStatusField, nounOf, noMatchText, shortUrl,
 } from "../form.js";
 
 test("only changed fields are sent", () => {
@@ -101,27 +102,6 @@ test("the toolbar is exactly the supported subset — no underline, no tables", 
   assert.deepEqual(TOOLBAR_COMMANDS, ["h1", "h2", "h3", "bold", "italic", "strike", "link", "ul", "ol", "task", "quote"]);
 });
 
-test("state text", () => {
-  assert.deepEqual(stateView("saving", null).lines, ["Saving…"]);
-  assert.equal(stateView("saved_syncing", { warnings: [] }, { isUpdate: true }).lines[0], "Saved · showing on pages within a few minutes");
-  assert.match(stateView("saved_syncing", { warnings: [], lag: { new_row_editable_after: "A new record can be edited after a few minutes." } }).lines[0], /A new record can be edited after a few minutes\.$/);
-  const saved = stateView("saved_syncing", { warnings: [{ code: "pipeline_warning", message: "Note." }, { code: "already_saved", message: "Already saved." }] }, { isUpdate: true });
-  assert.deepEqual(saved.lines.slice(1), ["Already saved.", "Note."]);
-  assert.deepEqual(stateView("refused", { refusals: [{ message: "One." }, { message: "Two." }] }).lines, ["One.", "Two."]);
-  const conf = stateView("confirm", { warnings: [{ code: "changed_since_opened", message: "Ana changed Status." }] });
-  assert.deepEqual(conf.lines, ["Ana changed Status."]);
-  assert.deepEqual(conf.actions, ["save_anyway", "cancel"]);
-});
-
-test("outcome unknown: Check in Coda always; a retry only for an update", () => {
-  const upd = stateView("outcome_unknown", { message: "May have saved.", source: "https://coda.example/r" }, { isUpdate: true });
-  assert.deepEqual(upd.link, { href: "https://coda.example/r", text: "Check in Coda" });
-  assert.deepEqual(upd.actions, ["retry"]);
-  const cre = stateView("outcome_unknown", { message: "May have saved.", source: null }, { isUpdate: false });
-  assert.deepEqual(cre.link, { href: null, text: "Check in Coda" });
-  assert.deepEqual(cre.actions, []);
-});
-
 test("an untouched native control reports its initial wire value, never what the browser kept", () => {
   // The browser sanitises on set: <input type=text> drops newlines, url/email trim, date and
   // number blank an unparseable value. Read back, each would look changed and be sent.
@@ -173,7 +153,7 @@ test("write-side links: http, https and mailto only", () => {
   for (const bad of ["javascript:alert(1)", "data:text/html,x", "  https://x", "example.org", "", null, "vbscript:x", "ftp://x"]) {
     assert.equal(allowedLinkHref(bad), null, String(bad));
   }
-  assert.equal(LINK_REFUSED, "Links must start with https://, http:// or mailto:");
+  assert.equal(LINK_REFUSED, "That doesn't look like a web address. Start it with https://");
 });
 
 test("an unparseable number or date refuses the save locally, naming the field", () => {
@@ -192,16 +172,6 @@ test("edit mode fails closed: only `editable === true` is editable", () => {
   for (const v of [undefined, null, false, {}, { editable: true }, { editable: false, reason: "table" }, "true"]) {
     assert.equal(isEditable(v), false, JSON.stringify(v));
   }
-});
-
-test("a 'You changed' warning after a save whose re-read failed is explained as the person's own save", () => {
-  const r = { warnings: [{ code: "changed_since_opened", by: "You", message: "You changed Status since you opened this record (in another tab or session). If you save, this version replaces that one." }] };
-  const stale = stateView("confirm", r, { isUpdate: true, tokenStale: true });
-  assert.equal(stale.lines.length, 2);
-  assert.match(stale.lines[1], /probably your own save/);
-  assert.equal(stateView("confirm", r, { isUpdate: true, tokenStale: false }).lines.length, 1);
-  const other = { warnings: [{ code: "changed_since_opened", by: "Ana", message: "Ana changed Status." }] };
-  assert.equal(stateView("confirm", other, { isUpdate: true, tokenStale: true }).lines.length, 1, "someone else's change is never explained away");
 });
 
 test("a save whose re-read failed: what was SENT becomes the starting point, nothing else", () => {
@@ -229,4 +199,178 @@ test("lockedByFieldset: a picker inside a disabled fieldset is locked", () => {
   assert.equal(lockedByFieldset({ closest: () => null }), false);
   assert.equal(lockedByFieldset(null), false);
   assert.equal(lockedByFieldset({}), false);
+});
+
+/* ---- the record form's state table (design handover 2026-10-07), one test per row ---- */
+
+const base = { phase: "ready", noun: "task", labelOf: (n) => ({ due: "Due date", status: "Status", org: "Organisation" }[n] || n) };
+const btns = (v) => ({ close: v.close.label, save: v.save.hidden ? null : v.save.label, disabled: !!v.save.disabled, busy: !!v.save.busy });
+
+test("loading: spinner line, Cancel, no Save", () => {
+  const v = formView({ ...base, phase: "loading" });
+  assert.deepEqual(v.footer, { text: "Loading the form…", spinner: true });
+  assert.equal(v.close.label, "Cancel");
+  assert.equal(v.save.hidden, true);
+});
+
+test("failed to load: error notice with Try again, Close", () => {
+  const v = formView({ ...base, phase: "load_failed", loadError: { message: "The TFS server didn't answer. Nothing has been changed.", retry: true } });
+  assert.equal(v.footer, null);
+  assert.equal(v.notices[0].tone, "error");
+  assert.equal(v.notices[0].title, "Couldn't load this form");
+  assert.deepEqual(v.notices[0].paragraphs, [["The TFS server didn't answer. Nothing has been changed."]]);
+  assert.deepEqual(v.notices[0].actions, [{ kind: "reload" }]);
+  assert.equal(v.close.label, "Close");
+  assert.equal(v.save.hidden, true);
+});
+
+test("no connector: the info notice telling them to add it", () => {
+  const v = formView({ ...base, phase: "no_connector" });
+  assert.equal(v.notices[0].tone, "info");
+  assert.equal(v.notices[0].title, "Add the TFS connector to edit here");
+  assert.match(v.notices[0].paragraphs[0][0], /under Connectors, then reload this page\.$/);
+  assert.equal(v.close.label, "Close");
+});
+
+test("clean: 'No changes', Close, Save disabled", () => {
+  const v = formView({ ...base, isUpdate: true, dirtyCount: 0 });
+  assert.equal(v.footer.text, "No changes");
+  assert.deepEqual(btns(v), { close: "Close", save: "Save changes", disabled: true, busy: false });
+});
+
+test("dirty: 'N unsaved change(s)', Cancel, Save", () => {
+  assert.equal(formView({ ...base, isUpdate: true, dirtyCount: 1 }).footer.text, "1 unsaved change");
+  const v = formView({ ...base, isUpdate: true, dirtyCount: 2 });
+  assert.equal(v.footer.text, "2 unsaved changes");
+  assert.deepEqual(btns(v), { close: "Cancel", save: "Save changes", disabled: false, busy: false });
+  assert.equal(countLabel(0), "No changes");
+});
+
+test("checking: 'Checking with Coda…', Cancel stops it, Save busy 'Checking…', fields locked", () => {
+  const v = formView({ ...base, isUpdate: true, dirtyCount: 1, state: "previewing" });
+  assert.equal(v.footer.text, "Checking with Coda…");
+  assert.deepEqual(v.close, { label: "Cancel", action: "abort" });
+  assert.deepEqual(btns(v), { close: "Cancel", save: "Checking…", disabled: true, busy: true });
+  assert.equal(v.locked, true);
+});
+
+test("conflict: warn notice naming who, when and which fields; Cancel, Save anyway", () => {
+  const receipt = { warnings: [{ code: "changed_since_opened", fields: ["due"], by: "Ana Example", at: "2026-10-07T09:56:00Z", message: "x" }] };
+  const v = formView({ ...base, isUpdate: true, dirtyCount: 1, state: "confirm", receipt, now: Date.parse("2026-10-07T10:00:00Z") });
+  assert.equal(v.footer, null);
+  assert.equal(v.notices[0].tone, "warn");
+  assert.equal(v.notices[0].title, "Ana Example changed this task 4 minutes ago");
+  assert.deepEqual(v.notices[0].paragraphs[0], ["They changed ", { strong: "Due date" }, ". Saving now replaces their version with yours. Save anyway?"]);
+  assert.deepEqual(v.close, { label: "Cancel", action: "abort" });
+  assert.equal(v.save.label, "Save anyway");
+  assert.equal(v.save.action, "confirm");
+});
+
+test("conflict without who/when falls back to 'Someone changed this since you opened it'", () => {
+  const v = formView({ ...base, isUpdate: true, state: "confirm", receipt: { warnings: [{ code: "changed_since_opened", fields: ["due", "status"], by: null, at: null }] } });
+  assert.equal(v.notices[0].title, "Someone changed this since you opened it");
+  assert.deepEqual(v.notices[0].paragraphs[0].filter((x) => typeof x === "object"), [{ strong: "Due date" }, { strong: "Status" }]);
+});
+
+test("a 'You changed' conflict after a save whose re-read failed is explained as the person's own save", () => {
+  const r = { warnings: [{ code: "changed_since_opened", by: "You", fields: ["status"], message: "You changed Status." }] };
+  const stale = formView({ ...base, isUpdate: true, state: "confirm", receipt: r, tokenStale: true });
+  assert.equal(stale.notices[0].paragraphs.length, 2);
+  assert.match(stale.notices[0].paragraphs[1][0], /probably your own save/);
+  assert.equal(formView({ ...base, isUpdate: true, state: "confirm", receipt: r }).notices[0].paragraphs.length, 1);
+  const other = { warnings: [{ code: "changed_since_opened", by: "Ana", fields: ["status"] }] };
+  assert.equal(formView({ ...base, isUpdate: true, state: "confirm", receipt: other, tokenStale: true }).notices[0].paragraphs.length, 1, "someone else's change is never explained away");
+});
+
+test("saving: 'You can close this; the save carries on.', Close stays, Save busy, fields locked", () => {
+  const v = formView({ ...base, isUpdate: true, dirtyCount: 1, state: "saving" });
+  assert.equal(v.footer.text, "You can close this; the save carries on.");
+  assert.deepEqual(btns(v), { close: "Close", save: "Saving…", disabled: true, busy: true });
+  assert.equal(v.locked, true);
+});
+
+test("saved: the quiet ok line, Close, Save disabled; other warnings as info", () => {
+  const v = formView({ ...base, isUpdate: true, state: "saved_syncing", receipt: { warnings: [{ code: "pipeline_warning", message: "Note." }] } });
+  assert.deepEqual(v.footer, { text: "Saved · shows on pages within a few minutes", ok: true });
+  assert.deepEqual(btns(v), { close: "Close", save: "Save changes", disabled: true, busy: false });
+  assert.deepEqual(v.notices[0].list, ["Note."]);
+  const created = formView({ ...base, state: "saved_syncing", receipt: { warnings: [], lag: { new_row_editable_after: "A new record can be edited after a few minutes." } } });
+  assert.deepEqual(created.notices[0].paragraphs, [["A new record can be edited after a few minutes."]]);
+  assert.equal(formView({ ...base, isUpdate: true, state: "saved_syncing", receipt: {}, rereadFailed: true }).footer.text, "Saved · refresh to see the latest");
+  assert.equal(formView({ ...base, isUpdate: true, state: "saved_syncing", receipt: {}, dirtyCount: 1 }).footer.text, "1 unsaved change", "an edit after the save is dirty again");
+});
+
+test("outcome unknown: warn notice, Check in Coda link, Close; a retry only for an update", () => {
+  const upd = formView({ ...base, isUpdate: true, state: "outcome_unknown", receipt: { message: "May have saved.", source: "https://coda.example/r" } });
+  assert.equal(upd.notices[0].title, "Coda didn't confirm this save");
+  assert.deepEqual(upd.notices[0].actions, [{ kind: "link", href: "https://coda.example/r", label: "Check in Coda" }, { kind: "retry" }]);
+  assert.equal(upd.close.label, "Close");
+  assert.equal(upd.save.hidden, true);
+  const cre = formView({ ...base, state: "outcome_unknown", receipt: { source: null } });
+  assert.deepEqual(cre.notices[0].actions, [], "a create is never retried, and no link without a source");
+  assert.deepEqual(cre.notices[0].paragraphs, [["It may have gone through. Check Coda before trying again."]]);
+});
+
+test("refused: each field's message at its field; other messages listed; Cancel, Save", () => {
+  const receipt = { refusals: [{ field: "org", message: "Add their organisation." }, { field: null, message: "Pages can't save this." }, { field: "hidden_one", message: "Not shown." }] };
+  const v = formView({ ...base, isUpdate: true, dirtyCount: 1, state: "refused", receipt, shownNames: ["org", "due"] });
+  assert.deepEqual(v.fieldErrors, { org: "Add their organisation." });
+  assert.equal(v.notices[0].title, "Not saved: 3 things to fix");
+  assert.deepEqual(v.notices[0].list, ["Pages can't save this.", "Not shown."]);
+  assert.deepEqual(v.notices[0].paragraphs, [["One more is marked at its field."]]);
+  assert.deepEqual(btns(v), { close: "Cancel", save: "Save changes", disabled: false, busy: false });
+  const one = formView({ ...base, isUpdate: true, state: "refused", receipt: { refusals: [{ field: "org", message: "Add their organisation." }] }, shownNames: ["org"] });
+  assert.equal(one.notices[0].title, "Not saved: 1 thing to fix");
+  assert.deepEqual(one.notices[0].paragraphs, [["It is marked at its field."]]);
+  assert.deepEqual(refusalView({ refusals: [{ field: "a", message: "x" }, { field: "a", message: "y" }] }, ["a"]).fieldErrors, { a: "x y" });
+});
+
+test("a local refusal (an unparseable date) is marked at its field, before anything is sent", () => {
+  const v = formView({ ...base, isUpdate: true, dirtyCount: 1, localErrors: { due: "Due date isn't a valid date." } });
+  assert.deepEqual(v.fieldErrors, { due: "Due date isn't a valid date." });
+  assert.equal(v.notices[0].title, "Not saved: 1 thing to fix");
+});
+
+test("already saved: info notice, Close only", () => {
+  const v = formView({ ...base, isUpdate: true, state: "saved_syncing", receipt: { warnings: [{ code: "already_saved", message: "x" }] } });
+  assert.equal(v.notices[0].title, "Already saved");
+  assert.deepEqual(v.notices[0].paragraphs, [["This was already saved earlier. Nothing new was written."]]);
+  assert.equal(v.footer, null);
+  assert.equal(v.save.hidden, true);
+  assert.equal(v.close.label, "Close");
+});
+
+test("create, empty: the footer names the first missing required field; 'Add task' disabled", () => {
+  const shown = [{ name: "title", label: "Title", required: true }, { name: "owner", label: "Owner", required: true }];
+  const miss = missingRequired(shown, { title: null, owner: "r-1" });
+  assert.equal(miss.name, "title");
+  const v = formView({ ...base, missing: miss.label });
+  assert.equal(v.footer.text, "Add a title to save");
+  assert.deepEqual(btns(v), { close: "Cancel", save: "Add task", disabled: true, busy: false });
+  assert.equal(addPhrase("Owner"), "Add an owner to save");
+  assert.equal(addPhrase("KMS entry"), "Add a KMS entry to save");
+  assert.equal(missingRequired(shown, { title: "x", owner: "r-1" }), null);
+  assert.equal(formView({ ...base, missing: null }).save.disabled, false);
+  assert.equal(formView({ ...base, saveLabel: "Add sub-task", missing: "Title" }).save.label, "Add sub-task");
+});
+
+test("words: nouns, initials, matches, no-match text, short urls", () => {
+  assert.equal(nounOf("tasks"), "task");
+  assert.equal(nounOf("kms_entries"), "KMS entry");
+  assert.equal(nounOf("whatever"), "record");
+  assert.equal(initials("Ana O'Example"), "AO");
+  assert.equal(initials("Ana"), "A");
+  assert.equal(initials(""), "?");
+  assert.deepEqual(markMatch("Ben Sample", "en"), ["B", "en", " Sample"]);
+  assert.deepEqual(markMatch("Ben Sample", "zz"), ["Ben Sample", "", ""]);
+  assert.equal(noMatchText("team_member", "Simon"), "No current team member matches 'Simon'. Only current core-team members can be picked.");
+  assert.equal(noMatchText("project", "x"), "No project matches 'x'.");
+  assert.equal(shortUrl("https://drive.example/folders/abc/"), "drive.example/folders/abc");
+});
+
+test("a status field: `status`, or any single dropdown whose options carry colours", () => {
+  assert.equal(isStatusField({ name: "status", kind: "dropdown", multi: false, options: [] }), true);
+  assert.equal(isStatusField({ name: "stage", kind: "dropdown", multi: false, options: [{ value: "A", color: "#2F6EB5" }] }), true);
+  assert.equal(isStatusField({ name: "urgency", kind: "dropdown", multi: false, options: [{ value: "High", label: "High" }] }), false);
+  assert.equal(isStatusField({ name: "status", kind: "dropdown", multi: true }), false);
 });

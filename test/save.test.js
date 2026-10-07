@@ -203,3 +203,27 @@ test("a re-read token with no row_version leaves the stale mark up", () => {
   assert.equal(m.tokenStale, true);
   assert.equal(m.rowVersion, "v1");
 });
+
+test("abort while previewing: the preview's answer is dropped and nothing is written", async () => {
+  let release;
+  const calls = [];
+  const tr = { call: (tool, input) => { calls.push(input); return new Promise((r) => { release = r; }); } };
+  const m = new SaveMachine({ transport: tr, table: "tasks", rowId: "i-p", rowVersion: "v" });
+  const p = m.submit({ status: "Complete" });
+  assert.equal(m.state, "previewing");
+  assert.equal(m.abort(), true);
+  release({ outcome: "previewed", warnings: [] });
+  await p;
+  assert.equal(m.state, "idle");
+  assert.equal(calls.length, 1, "the commit was never sent");
+});
+
+test("abort on the question is a cancel; a save already writing cannot be aborted", async () => {
+  const tr = t([{ outcome: "previewed", warnings: [{ code: "changed_since_opened" }] }]);
+  const m = new SaveMachine({ transport: tr, table: "projects", rowId: "i-p", rowVersion: "v" });
+  await m.submit({ status: "Complete" });
+  assert.equal(m.abort(), true);
+  assert.equal(m.state, "idle");
+  m.state = "saving";
+  assert.equal(m.abort(), false);
+});

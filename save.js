@@ -95,13 +95,17 @@ export class SaveMachine {
       this.key = uuid();
     }
     this.pending = fields;
+    this._aborted = false;
     this.set("previewing");
     let pre;
     try { pre = await this.transport.call("save_record", this.input(fields, true)); }
     catch (e) {
+      if (this._aborted) return this.set("idle", { receipt: null });
       // A preview writes nothing, so a failed one is simply "not saved", whatever the code.
       return this.set("refused", { receipt: { outcome: "refused", refusals: [{ code: e && e.code, message: (e && e.message) || "Something went wrong." }], warnings: [] } });
     }
+    // The person cancelled while the preview was out: nothing was written, and nothing will be.
+    if (this._aborted) return this.set("idle", { receipt: null });
     if (!pre || pre.outcome === "refused") return this.set("refused", { receipt: pre });
     if (pre.outcome !== "previewed") {
       return this.set("refused", { receipt: { outcome: "refused", refusals: [{ code: "bad_payload", message: "The TFS server sent an answer this page doesn't understand. Nothing was saved." }], warnings: [] } });
@@ -116,6 +120,15 @@ export class SaveMachine {
   confirm() { if (this.state === "confirm") return this.commit(); }
 
   cancel() { if (this.state === "confirm") this.set("idle", { receipt: null }); }
+
+  /** Stop a submission that has not reached the write: while previewing (the preview writes
+   * nothing, and the commit that would follow it is not sent) or while asking the person.
+   * Returns true when it stopped one. A save already writing cannot be stopped. */
+  abort() {
+    if (this.state === "previewing") { this._aborted = true; return true; }
+    if (this.state === "confirm") { this.cancel(); return true; }
+    return false;
+  }
 
   /** The page's deliberate fresh start (e.g. after the person checked Coda). New key next time. */
   reset() { if (!this.busy()) { this.key = null; this.pending = null; this.set("idle", { receipt: null }); } }
