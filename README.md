@@ -241,6 +241,8 @@ browsers within minutes. jsDelivr caches the `@1` range itself for 7 days, so a 
 fetched a broken release keeps it for a week. Do not pin `@1.x.y`: a pinned page never receives
 a fix. The current version is exported as `KIT_VERSION`.
 
+- **1.5.1** — fix: a button the form hides (`hidden`), such as "Add task" on the failure and couldn't-load screens, was still shown, enabled and dead, because `.tfs-btn{display:inline-flex}` beat the `hidden` attribute. `.tfs-btn[hidden]{display:none}` restores it.
+
 ## Licence
 
 MIT, Copyright (c) 2026 The Future Society. Source:

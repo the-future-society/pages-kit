@@ -10,6 +10,17 @@ test("kit-css.js is kit.css, verbatim (regenerate: node scripts/build_kit_css.mj
   assert.match(src, /^\/\/ generated from kit\.css by scripts\/build_kit_css\.mjs — do not edit\n/);
 });
 
+// The HTML `hidden` attribute is a UA `display:none` that any author `display:` rule beats. A bare
+// `.tfs-btn{display:inline-flex}` kept a form-hidden primary button on screen, enabled and dead (1.5.0).
+// No CSS engine here, so pin the rule that restores it: every class the kit hides through `hidden`
+// AND gives a `display:` of its own must carry a `[hidden]{display:none}` override.
+test("a hidden .tfs-btn (and every other kit class with its own display) stays hidden", () => {
+  const css = readFileSync(new URL("../kit.css", import.meta.url), "utf8");
+  for (const cls of ["tfs-btn", "tfs-menu", "tfs-picker__list", "tfs-rt__ask", "tfs-rt__askerr"]) {
+    assert.match(css, new RegExp(`\\.${cls}\\[hidden\\]\\s*\\{\\s*display:\\s*none\\s*\\}`), `.${cls}[hidden]{display:none} is missing`);
+  }
+});
+
 // A minimal fake DOM: enough to watch where the style goes and that it goes once.
 function fakeDoc({ head = true, optOut = false } = {}) {
   const el = (tag) => ({

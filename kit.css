@@ -78,6 +78,8 @@ tfs-status-menu{display:inline-block;position:relative}
 .tfs-btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:var(--tfs-touch);padding:0 18px;
   border:1px solid var(--tfs-field-border);border-radius:var(--tfs-radius);background:var(--tfs-surface);color:var(--tfs-ink);
   font:600 14px/1.2 var(--tfs-font);white-space:nowrap;text-decoration:none;cursor:pointer;transition:background-color .12s,border-color .12s}
+/* `display:inline-flex` above would otherwise beat the HTML `hidden` attribute (kit 1.5.1). */
+.tfs-btn[hidden]{display:none}
 .tfs-btn:hover{border-color:var(--tfs-muted);color:var(--tfs-ink)}
 .tfs-btn--primary{background:var(--tfs-accent);border-color:var(--tfs-accent);color:var(--tfs-accent-ink)}
 .tfs-btn--primary:hover{background:var(--tfs-accent-hover);border-color:var(--tfs-accent-hover);color:var(--tfs-accent-ink)}
