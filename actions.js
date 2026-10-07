@@ -548,6 +548,9 @@ export class TfsDeleteTask extends Base {
       if (v.spinner) this._textEl.firstChild.style.color = "var(--tfs-muted)";
       d.setAttribute("aria-describedby", this._textEl.id);
     } else {
+      // Clear the spinner state's inline display:flex too: an inline display beats the `hidden`
+      // attribute, so the empty line stayed on screen after a spinner step (found 2026-10-07).
+      this._textEl.style.cssText = "";
       this._textEl.hidden = true;
       d.removeAttribute("aria-describedby");
     }
