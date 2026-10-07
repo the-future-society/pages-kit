@@ -170,6 +170,8 @@ export class TfsStatusMenu extends Base {
     return syncingValue(recentSaves, this.key, served) ?? served;
   }
   get syncing() { return syncingValue(recentSaves, this.key, this.getAttribute("value")) != null; }
+  /** True while this menu is open or saving — `autoRefresh` (live.js) waits for it. */
+  get editing() { return !!(this._menu && (this._menu.isOpen || this._menu.busy)); }
 
   get model() {
     if (!this._model) this._model = new StatusSave({ transport: this.transport, table: this.table, row: this.getAttribute("row"), field: this.field });

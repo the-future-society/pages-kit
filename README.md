@@ -208,6 +208,33 @@ pending_fields, message, values_sent?}`, `state` being `unconfirmed`, `confirmed
 before closing; Refresh from Coda is held until the wait ends), and does not poll after an
 ordinary pick.
 
+## Keeping a page current — `autoRefresh` (1.6.0)
+
+Without it a page reads TFS once, when it opens, and shows the same thing until the viewer
+reloads. `autoRefresh` re-reads for it:
+
+```js
+import { autoRefresh } from "https://unpkg.com/@thefuturesociety/pages-kit@1/kit.js";
+const live = autoRefresh({ load: (fresh) => loadList(fresh), stamp: document.getElementById("updated") });
+live.refresh(false);                                              // the first load
+document.addEventListener("tfs-saved", () => live.refresh());     // after a save
+document.addEventListener("tfs-confirmed", () => live.refresh());
+```
+
+- Every 5 minutes while the page is visible, `load(true)` (fresh: past claude.ai's request
+  cache). A hidden tab never re-reads; coming back to it after 30 seconds or more re-reads at once.
+- **Never under an edit.** A background re-read waits (retrying every 15 s) while a
+  `<tfs-record-form>` has a change not saved or a save in flight, a `<tfs-status-menu>` is open
+  or saving, the focus is in a text field or editable area, or `isBusy()` (yours, optional)
+  returns true. A `refresh()` the page asks for is never held.
+- One read at a time; a call during one is queued once behind it.
+- `stamp` shows "Updated 14:32" (the viewer's clock). `load` should keep what is on screen and
+  throw when its read fails: the stamp then keeps the last good time and adds "couldn't refresh,
+  will retry" — never a claim to be current that isn't true.
+- Options: `every`, `returnAfter`, `retryEvery` (ms), `isBusy`. Returns `{ refresh(fresh = true),
+  stop(), loadedAt }`. Also exported: `isEditing(doc)`, and an `editing` getter on
+  `<tfs-record-form>` and `<tfs-status-menu>`.
+
 ## Events
 
 Dispatched on the element; they bubble, and cross shadow roots (composed).
@@ -241,6 +268,7 @@ browsers within minutes. jsDelivr caches the `@1` range itself for 7 days, so a 
 fetched a broken release keeps it for a week. Do not pin `@1.x.y`: a pinned page never receives
 a fix. The current version is exported as `KIT_VERSION`.
 
+- **1.6.0** — `autoRefresh`: a page re-reads itself every 5 minutes while visible and on return to the tab, never under an edit, with an "Updated" time; `editing` on `<tfs-record-form>` and `<tfs-status-menu>`.
 - **1.5.1** — fix: a button the form hides (`hidden`), such as "Add task" on the failure and couldn't-load screens, was still shown, enabled and dead, because `.tfs-btn{display:inline-flex}` beat the `hidden` attribute. `.tfs-btn[hidden]{display:none}` restores it.
 
 ## Licence

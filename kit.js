@@ -11,6 +11,7 @@
  *   <tfs-delete-task row="i-…" title="Draft the brief"></tfs-delete-task>
  *   <tfs-task-filters bar="mine,closed,snoozed"></tfs-task-filters>   (task filter bar; see tasks.js)
  *   <tfs-kind table="tasks"></tfs-kind>   (says what kind of record a card or drawer shows)
+ *   autoRefresh({ load, stamp })   (the page re-reads itself every 5 min and on return to the tab; live.js)
  *
  * The artifact must declare the TFS MCP Server's four page tools in its `mcp` manifest:
  * describe_record_form, get_record_for_editing, search_records_for_picker, save_record —
@@ -24,7 +25,7 @@
  * Load from unpkg, not jsDelivr: unpkg 302s `@1` to the exact version (60-second cache) and that
  * file is immutable, so a release reaches browsers in minutes; jsDelivr caches `@1` for 7 days.
  */
-export const KIT_VERSION = "1.5.2";
+export const KIT_VERSION = "1.6.0";
 export { SERVER, KIT_CONTRACT, createTransport, kitError, checkContract, unwrap } from "./transport.js";
 export {
   SaveMachine, STATES, ConfirmWatch, confirmationKind, looksLikeCreateLag, POLL_EVERY_MS, POLL_LIMIT_MS,
@@ -50,6 +51,7 @@ export {
   filterTree, treeCounts, countTasks, formatCount, hoursOf,
 } from "./tasks.js";
 export { TfsKind, KINDS, kindOf } from "./kind.js";
+export { autoRefresh, isEditing, focusIsEditable, stampText, REFRESH_EVERY_MS, RETURN_AFTER_MS, RETRY_EVERY_MS } from "./live.js";
 export { TfsTaskFilters, FilterState, TOGGLES, CHOOSERS, loadUrgencyOptions, safeStorage } from "./filters.js";
 import { TfsRecordForm, TfsPicker, TfsRichText } from "./form.js";
 import { TfsStatusMenu, TfsDeleteTask } from "./actions.js";

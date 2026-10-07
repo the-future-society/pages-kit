@@ -1967,6 +1967,9 @@ export class TfsRecordForm extends Base {
     } else this._more = null;
     this._bodyEl.append(fieldsBox);
     this._ready = true;
+    // What the form holds before the person touches it (a create form's presets and defaults
+    // already count as "changes"), so `editing` means the PERSON changed something.
+    try { this._startChanges = JSON.stringify(this.changes()); } catch { this._startChanges = null; }
     this._paint(this.machine);
   }
 
@@ -2138,6 +2141,21 @@ export class TfsRecordForm extends Base {
 
   /** What a save would send now (only changed fields). */
   changes() { return payloadFor(this._byName || {}, this._initial, this.currentValues()); }
+  /** True while the person is mid-edit: a save in flight or waiting, or — on a form that is
+   * actually showing — an outcome not yet known or a field the person changed and has not saved
+   * (a create form's presets and defaults do not count). A form in a closed drawer is not being
+   * edited. `autoRefresh` (live.js) holds a page's background re-read while any form says so,
+   * so a redraw never lands under someone's typing. */
+  get editing() {
+    const m = this.machine;
+    if (!m) return false;
+    if (m.busy()) return true;
+    const shown = typeof this.getClientRects !== "function" || this.getClientRects().length > 0;
+    if (!shown) return false;
+    if (m.state === "outcome_unknown") return true;
+    if (!this._ready) return false;
+    try { return JSON.stringify(this.changes()) !== this._startChanges; } catch { return false; }
+  }
 
   _onEdit(e) {
     if (!this._ready) return;
