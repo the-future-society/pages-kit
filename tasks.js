@@ -7,7 +7,8 @@
  *   hideSnoozed(nodes)             the tree without snoozed tasks (a snoozed parent of awake
  *                                  sub-tasks stays, marked `_snoozedContext`)
  *   taskMatcher(values, ctx)       one predicate from <tfs-task-filters> values (null = no filter)
- *   filterTree(nodes, pred)        keep matches and their ancestors (`_hit` marks real matches)
+ *   filterTree(nodes, pred)        keep matches and their ancestors (`_hit` marks real matches;
+ *                                  a heading row — see isHeadingRow — is never a match)
  *   countTasks(transport, args)    an EXACT count of a search_tasks query, without fetching rows
  *   hoursOf("2 hrs")               a task's "time required" in hours (0 when blank or unknown)
  *
@@ -130,14 +131,22 @@ export function taskMatcher(values = {}, { me = null, today = todayISO() } = {})
     && (!q || [n.title, n.owner_name, n.notes].filter(Boolean).join(" ").toLowerCase().includes(q));
 }
 
+/** A row on the page only as a HEADING, not as work: a finished parent kept for its open
+ * sub-tasks (`context_only`), or a snoozed parent kept for another owner's awake sub-task
+ * (`_snoozedContext`, from hideSnoozed). */
+export function isHeadingRow(n) { return !!(n && (n.context_only || n._snoozedContext)); }
+
 /** Keep each node that matches or has a match under it. `_hit` is true on real matches; an
- * ancestor kept only for a match below it has `_hit: false` (show it muted). */
+ * ancestor kept only for a match below it has `_hit: false` (show it muted).
+ * A HEADING ROW IS NEVER A MATCH: it is kept only above a real match. Testing it against the
+ * filters showed finished and snoozed tasks as matches once the sub-tasks that justified them
+ * were filtered out (2026-10-07). */
 export function filterTree(nodes, pred) {
   if (!pred) return nodes;
   const out = [];
   for (const n of nodes || []) {
     const kids = filterTree(n.children, pred);
-    const hit = !!pred(n);
+    const hit = !isHeadingRow(n) && !!pred(n);
     if (hit || kids.length) out.push({ ...n, children: kids, _hit: hit });
   }
   return out;

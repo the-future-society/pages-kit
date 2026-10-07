@@ -1,6 +1,6 @@
 {
   "name": "@thefuturesociety/pages-kit",
-  "version": "1.3.0",
+  "version": "1.3.1",
   "description": "Zero-dependency form elements for The Future Society's staff pages: <tfs-record-form>, <tfs-picker>, <tfs-rich-text>, <tfs-status-menu>, <tfs-delete-task>, <tfs-task-filters>, <tfs-kind>; plus task helpers (snooze rule, filters, exact counts).",
   "type": "module",
   "main": "./kit.js",

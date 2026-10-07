@@ -4,7 +4,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   todayISO, addDays, normaliseTree, markSnoozed, hideSnoozed, taskMatcher, filterTree, treeCounts,
-  countTasks, formatCount, hoursOf, dueMatches, DUE_OPTIONS,
+  countTasks, formatCount, hoursOf, dueMatches, DUE_OPTIONS, isHeadingRow,
 } from "../tasks.js";
 
 const T = "2026-03-10";
@@ -121,4 +121,39 @@ test("hoursOf reads Coda's time-required labels", () => {
   assert.equal(hoursOf("1 day"), 8);
   assert.equal(hoursOf(null), 0);
   assert.equal(hoursOf("Half a day"), 0, "an unknown label adds nothing rather than a guess");
+});
+
+// Regression, 2026-10-07: a heading row (a finished parent kept for its open sub-tasks, or a
+// snoozed parent kept for ANOTHER owner's awake sub-task) was tested against the filters as if it
+// were work. With "My tasks" on, the other owner's sub-task dropped out and the heading stayed,
+// shown as a match: finished and snoozed tasks appeared under filters that should hide them.
+test("filterTree: a heading row never counts as a match; it stays only above a real match", () => {
+  const tree = markSnoozed([
+    n("snoozed-parent", { snooze_until: "2026-04-01", urgency_name: "3 Medium", children: [
+      n("mine-snoozed", { urgency_name: "2 High", children: [
+        n("done-parent", { status_name: "Complete", context_only: true, children: [n("theirs", { owner_coda_row_id: "c" })] }),
+      ] }),
+      n("mine-snoozed-leaf", { urgency_name: "3 Medium" }),
+    ] }),
+    n("done-heading", { status_name: "Complete", context_only: true, urgency_name: "2 High", children: [n("their-open", { owner_coda_row_id: "c" })] }),
+    n("real", { urgency_name: "2 High" }),
+  ], T);
+  const visible = hideSnoozed(tree);
+  const ids = (list) => list.flatMap((x) => [x.coda_row_id, ...ids(x.children)]);
+  // Unfiltered, the headings stay: another owner's awake work sits under them.
+  assert.ok(ids(visible).includes("snoozed-parent") && ids(visible).includes("done-heading"));
+  // Filtered to MY tasks, nothing of mine is awake under them, so they go.
+  const out = filterTree(visible, taskMatcher({ mine: true, urgency: ["2 High", "3 Medium"] }, { me: "a", today: T }));
+  assert.deepEqual(ids(out), ["real"]);
+  // A heading above a real match stays, but as an ancestor, never a hit.
+  const theirs = filterTree(visible, taskMatcher({ owner: "c" }, { today: T }));
+  const heads = []; const walk = (l) => l.forEach((x) => { if (x.coda_row_id !== "theirs" && x.coda_row_id !== "their-open") heads.push([x.coda_row_id, x._hit]); walk(x.children); });
+  walk(theirs);
+  assert.ok(heads.length && heads.every(([, hit]) => hit === false), JSON.stringify(heads));
+});
+
+test("isHeadingRow: context-only and snoozed-context rows are headings; ordinary rows are not", () => {
+  assert.equal(isHeadingRow(n("a", { context_only: true })), true);
+  assert.equal(isHeadingRow({ ...n("b"), _snoozedContext: true }), true);
+  assert.equal(isHeadingRow(n("c")), false);
 });
