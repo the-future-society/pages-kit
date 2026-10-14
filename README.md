@@ -280,3 +280,24 @@ https://github.com/the-future-society/pages-kit.
 That repository is a mirror: the kit is developed in The Future Society's private repository and
 copied there for each release, which is published to npm from it with provenance. See its
 `CONTRIBUTING.md`; bug reports are welcome as issues there.
+
+## Power maps (1.8.0)
+
+Six elements for a power-map page. They read nothing themselves except where noted; the page
+passes the map it loaded (`get_power_map`'s shape) and listens for events.
+
+| Element | What it is | Key attributes / events |
+| --- | --- | --- |
+| `<tfs-power-map>` | The map drawing: `layout="rings"` (ring = role, angle = stance) or `"network"`; shapes by kind, size by power, fill by stance, outline by who knows them; a Key on the canvas whose rows hide and show; large maps open grouped. | `data`, `editable`, `selected`, `partial`, `group-by`; events `tfs-actor-select`, `tfs-actor-menu`, `tfs-actor-action`, `tfs-map-action` |
+| `<tfs-map-people>` | Add people to a map: search by name, browse an organisation (with its sub-organisations), bulk add with progress, optional role / power / stance. | `map`, `map-name`, `editable`, `measures`, property `onMap`; events `tfs-map-people-added`, `-removed`, `-restored`, `-done` |
+| `<tfs-quick-contact>` | A short "new contact" form inside the add-people drawer, with an inline new organisation. | `name`; events `tfs-contact-ready`, `tfs-quick-contact-cancel` |
+| `<tfs-section>` | A collapsible section whose whole heading is the toggle; open state remembered. | `heading`, `count`, `kind-table`, `key`, `open`, `info` |
+| `<tfs-record-peek>` | A record (a KMS entry) opened inside the page, with Edit and "Open in Coda". Reads `get_record_for_editing`. | `table`, `row`, `source`, `editable` |
+| `<tfs-view-switch>` | Rings / Network / List / Cards, remembered per viewer. | `views`, `key`, `default`; event `tfs-view-change` |
+
+Their styles (`pm.css`) are injected once with the elements. The page's root needs
+`class="pm"` and a `data-theme` (`light`, `dark` or `auto`). Removing someone from a map is
+`removeActor(mapId, nodeId)` (it marks them removed; nothing is deleted).
+
+A page that also calls ordinary read tools (not the four page tools) through the kit's transport
+passes `{contract: false}`: `transport.call("get_power_map", input, {contract: false})`.

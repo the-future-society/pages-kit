@@ -34,6 +34,7 @@ export const KINDS = {
   power_map_judgement: ["JUDGEMENT", "event"],
   power_map_node: ["ACTOR", "event"],
   power_map_measure: ["MEASURE", "event"],
+  calendar_org_events: ["Meeting", "event"],
 };
 
 /** The label and colour class for a table: `{label, tone}`. Unknown tables are humanised

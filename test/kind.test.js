@@ -8,6 +8,7 @@ test("each known table has a plain label and a tone", () => {
   assert.deepEqual(kindOf("projects"), { label: "Project", tone: "project" });
   assert.deepEqual(kindOf("kms_entries"), { label: "KMS entry", tone: "kms" });
   assert.deepEqual(kindOf("impact"), { label: "Impact", tone: "impact" });
+  assert.deepEqual(kindOf("calendar_org_events"), { label: "Meeting", tone: "event" });
   for (const [t, [label]] of Object.entries(KINDS)) assert.doesNotMatch(label, /_/, t);
 });
 

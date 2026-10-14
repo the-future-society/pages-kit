@@ -25,7 +25,7 @@
  * Load from unpkg, not jsDelivr: unpkg 302s `@1` to the exact version (60-second cache) and that
  * file is immutable, so a release reaches browsers in minutes; jsDelivr caches `@1` for 7 days.
  */
-export const KIT_VERSION = "1.7.0";
+export const KIT_VERSION = "1.8.0";
 export { SERVER, KIT_CONTRACT, createTransport, kitError, checkContract, unwrap } from "./transport.js";
 export {
   SaveMachine, STATES, ConfirmWatch, confirmationKind, looksLikeCreateLag, POLL_EVERY_MS, POLL_LIMIT_MS,
@@ -57,6 +57,28 @@ import { TfsRecordForm, TfsPicker, TfsRichText } from "./form.js";
 import { TfsStatusMenu, TfsDeleteTask } from "./actions.js";
 import { TfsTaskFilters } from "./filters.js";
 import { TfsKind } from "./kind.js";
+export { PM_CSS, ensurePmCss } from "./pm-css.js";
+export {
+  TfsPowerMap, shapeD, nodeRadius, trimRadius, wrapLabel, numeric, judgement, stanceBucket, colourBucket,
+  stanceClass, relKey, ringOf, ringRadius, stanceAnchors, ringStep, ringAngle, ringPlacement, networkLayout,
+  linkLanes, linkPath, linkWidth, linkClass, linkTitle, linkId, isResearched, liveActors, drawableLinks,
+  nodeKeys, keyFilter, keyRows, labelSet, groupBubbles, groupingOf, bubbleLayout, opensGrouped, partialText,
+  LINK_KINDS, LINK_ORDER, ACTOR_KINDS, KIND_ORDER, STANCE_BANDS, REL_LABELS, REL_ORDER, ROLE_LABELS, ROLE_PICK,
+  DEFAULT_RING_LABELS, RINGS, LABEL_LIMIT, TOP_POWER, GROUP_THRESHOLD,
+} from "./power-map.js";
+export {
+  TfsMapPeople, TfsQuickContact, removeActor, restoreActor, saveOnce, outcomeOf, UNKNOWN_SAVE,
+  isOnMap, idVariants, buildOrgTree, bulkProgressText, judgementFields, duplicateFrom, workplaceAnswered,
+  NO_EMPLOYER, EITHER_OR_RULE,
+} from "./map-people.js";
+export {
+  TfsSection, TfsViewSwitch, TfsRecordPeek, historySentence, historyParts, historyGroups, withPrevious,
+  renderHistory, undoToast, stanceLabel, stanceWithValue, STANCE_BAND_ZERO, relLabel, measureLabel, formatDay,
+  resolveView, parseViews, viewLabel, VIEW_LABELS,
+} from "./pm-parts.js";
+import { TfsPowerMap } from "./power-map.js";
+import { TfsMapPeople, TfsQuickContact } from "./map-people.js";
+import { TfsSection, TfsViewSwitch, TfsRecordPeek } from "./pm-parts.js";
 import { KIT_CSS } from "./kit-css.js";
 export { KIT_CSS };
 
@@ -82,7 +104,9 @@ injectKitStyles();
 
 if (globalThis.customElements) {
   for (const [name, cls] of [["tfs-rich-text", TfsRichText], ["tfs-picker", TfsPicker], ["tfs-record-form", TfsRecordForm],
-    ["tfs-status-menu", TfsStatusMenu], ["tfs-delete-task", TfsDeleteTask], ["tfs-task-filters", TfsTaskFilters], ["tfs-kind", TfsKind]]) {
+    ["tfs-status-menu", TfsStatusMenu], ["tfs-delete-task", TfsDeleteTask], ["tfs-task-filters", TfsTaskFilters], ["tfs-kind", TfsKind],
+    ["tfs-power-map", TfsPowerMap], ["tfs-map-people", TfsMapPeople], ["tfs-quick-contact", TfsQuickContact],
+    ["tfs-section", TfsSection], ["tfs-view-switch", TfsViewSwitch], ["tfs-record-peek", TfsRecordPeek]]) {
     if (!customElements.get(name)) customElements.define(name, cls);
   }
 }

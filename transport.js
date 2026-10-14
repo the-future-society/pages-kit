@@ -148,7 +148,22 @@ export function createTransport({ kind, mcp = null, app = null, baseUrl = "", fe
     throw { code: "bad_request", message: `Unknown transport kind: ${kind}` };
   }
 
-  async function call(tool, input = {}, { write = false, fresh = false } = {}) {
+  // `contract: false` is for the ordinary READ tools a page also calls (`get_power_map`,
+  // `get_org_contacts`, …): they are not page tools, carry no `contract` field, and are read
+  // as they come. Never pass it for a write or for the four page tools.
+  async function call(tool, input = {}, { write = false, fresh = false, contract = true } = {}) {
+    if (contract === false) {
+      if (write) throw kitError("bad_request", "A write always checks the contract.");
+      let payload;
+      try {
+        payload = await raw(tool, { ...(input || {}) }, { write: false, fresh });
+      } catch (e) {
+        if (isKitError(e)) throw e;
+        throw kitError(e && e.code, e && e.message, { retryable: e && e.retryable });
+      }
+      if (!payload || typeof payload !== "object") throw kitError("bad_payload");
+      return payload;
+    }
     const body = { ...(input || {}), contract: KIT_CONTRACT };
     let payload;
     try {

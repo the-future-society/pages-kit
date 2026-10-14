@@ -1,21 +1,50 @@
 {
   "name": "@thefuturesociety/pages-kit",
-  "version": "1.7.0",
-  "description": "Zero-dependency form elements for The Future Society's staff pages: <tfs-record-form>, <tfs-picker>, <tfs-rich-text>, <tfs-status-menu>, <tfs-delete-task>, <tfs-task-filters>, <tfs-kind>; plus task helpers (snooze rule, filters, exact counts) and autoRefresh (a page keeps itself current).",
+  "version": "1.8.0",
+  "description": "Zero-dependency form elements for The Future Society's staff pages: <tfs-record-form>, <tfs-picker>, <tfs-rich-text>, <tfs-status-menu>, <tfs-delete-task>, <tfs-task-filters>, <tfs-kind>; power maps: <tfs-power-map>, <tfs-map-people>, <tfs-quick-contact>, <tfs-section>, <tfs-record-peek>, <tfs-view-switch>; plus task helpers (snooze rule, filters, exact counts) and autoRefresh (a page keeps itself current).",
   "type": "module",
   "main": "./kit.js",
   "exports": {
     ".": "./kit.js",
     "./kit.css": "./kit.css"
   },
-  "files": ["LICENSE", "README.md", "actions.js", "form.js", "icons.js", "kit-css.js", "kit.css", "kit.js", "markdown.js", "save.js", "status-colour.js", "tasks.js", "filters.js", "kind.js", "transport.js", "live.js"],
+  "files": [
+    "LICENSE",
+    "README.md",
+    "actions.js",
+    "form.js",
+    "icons.js",
+    "kit-css.js",
+    "kit.css",
+    "kit.js",
+    "markdown.js",
+    "save.js",
+    "status-colour.js",
+    "tasks.js",
+    "filters.js",
+    "kind.js",
+    "transport.js",
+    "live.js",
+    "pm.css",
+    "pm-css.js",
+    "power-map.js",
+    "map-people.js",
+    "pm-parts.js"
+  ],
   "license": "MIT",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/the-future-society/pages-kit.git"
   },
   "homepage": "https://github.com/the-future-society/pages-kit#readme",
-  "bugs": { "url": "https://github.com/the-future-society/pages-kit/issues" },
-  "publishConfig": { "access": "public", "provenance": true },
-  "scripts": { "test": "node --test \"test/*.test.js\"" }
+  "bugs": {
+    "url": "https://github.com/the-future-society/pages-kit/issues"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
+  "scripts": {
+    "test": "node --test \"test/*.test.js\""
+  }
 }

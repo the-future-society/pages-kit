@@ -104,3 +104,12 @@ test("fetch: 5xx and a network drop are ambiguous; 401 asks to sign in again", a
   assert.equal(seen[0], "https://x.test/api/tools/save_record");
   assert.deepEqual(seen[1], { table: "tasks", contract: 1 });
 });
+
+test("contract:false reads an ordinary read tool as it comes, and never for a write", async () => {
+  const seen = [];
+  const t = createTransport({ kind: "artifact", mcp: { callTool: async (s, tool, input) => { seen.push(input); return { payload: { rows: [1] } }; } } });
+  assert.deepEqual(await t.call("get_org_contacts", { org_name: "i-x" }, { contract: false }), { rows: [1] });
+  assert.equal("contract" in seen[0], false, "no contract sent to a read tool");
+  await assert.rejects(t.call("get_org_contacts", {}), (e) => e.code === "contract_mismatch");
+  await assert.rejects(t.call("save_record", {}, { write: true, contract: false }), (e) => e.code === "bad_request");
+});
