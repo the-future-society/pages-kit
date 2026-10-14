@@ -237,6 +237,8 @@ export function groupLines(groups, served) {
 const NOUNS = {
   tasks: "task", projects: "project", kms_entries: "KMS entry", impact: "impact entry",
   contacts: "contact", organizations: "organisation", project_updates: "project update",
+  power_map: "power map", power_map_actor: "actor on this map", power_map_link: "link",
+  power_map_judgement: "score", power_map_node: "actor", power_map_measure: "score type",
 };
 /** The plain word for one record of `table` ("task"); "record" for a table the kit has no word for. */
 export function nounOf(table) { return NOUNS[table] || "record"; }

@@ -500,3 +500,10 @@
 @media (prefers-reduced-motion:reduce){.spin{animation:none}}
 .sk{background:var(--wash);border-radius:6px}
 .chipline{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:700;border-radius:999px;padding:2px 9px;background:var(--wash);color:var(--ink-2)}
+/* kit 1.8.1: a narrow map column (details panel open) made the drawing short, and the on-canvas
+   Key ran past the panel. The drawing keeps a usable height on desktop; the Key scrolls inside it. */
+@media (min-width:721px){.gbox{min-height:480px}.gbox svg.net{min-height:480px}}
+/* kit 1.8.1: names on a grown Rings drawing are drawn larger to stay readable (set by the element). */
+tfs-power-map .nd text{font-size:calc(12.5px * var(--pm-label-k,1))}
+tfs-power-map .ringlab{font-size:calc(11px * var(--pm-label-k,1))}
+tfs-power-map .sidelab{font-size:calc(12px * var(--pm-label-k,1))}

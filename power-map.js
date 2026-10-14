@@ -267,8 +267,54 @@ export function ringOf(role) {
   return 0;
 }
 
-export function ringRadius(ring) {
-  return RINGS.actorR[ring] || 0;
+export function ringRadius(ring, f = 1) {
+  return (RINGS.actorR[ring] || 0) * f;
+}
+
+/** How much the rings must grow so every actor in a ring has about 84 units of arc (a label's
+ * room): 1 when they fit at the design's radii, more when one role holds many actors (an
+ * imported map often files everyone as a decision-maker). Capped so the drawing stays legible. */
+export const RING_ARC = 96;
+/** How far a crowded ring's two staggered rows sit inside and outside its radius. */
+export const ROW_OFFSET = { 1: 22, 2: 24, 3: 22 };
+/** Rows per ring. Two staggered rows were tried (2026-10-15) and put one row's names on the
+ * other row's shapes, so a crowded ring grows instead (ringScale) and its names are drawn larger
+ * to match (`--pm-label-k`). Kept as a function so a later layout can change it in one place. */
+export function ringRows() {
+  return 1;
+}
+export function ringScale(counts) {
+  let f = 1;
+  for (const ring of [1, 2, 3]) {
+    const n = counts[ring] || 0;
+    if (n) f = Math.max(f, (n * RING_ARC) / (ringRows(ring, n) * 2 * Math.PI * RINGS.actorR[ring] * 0.9));
+  }
+  return Math.min(3, Math.round(f * 100) / 100);
+}
+
+/** The Rings viewBox for a scale: the design's box grown about the rings' centre. */
+export function ringsView(f = 1) {
+  const [x0, y0, w, h] = VIEWBOX;
+  return [RINGS.cx - (RINGS.cx - x0) * f, RINGS.cy - (RINGS.cy - y0) * f, w * f, h * f];
+}
+
+/** Push apart actors on one ring that sit closer than `gap` degrees, keeping their order (a few
+ * passes of pairwise relaxation round the circle). Mutates and returns the angle list. */
+export function spreadAngles(items, gap) {
+  if (items.length < 2) return items;
+  const n = items.length;
+  const g = Math.min(gap, 360 / n);
+  for (let pass = 0; pass < 60; pass++) {
+    items.sort((p, q) => p.angle - q.angle);
+    let moved = false;
+    for (let i = 0; i < n; i++) {
+      const a = items[i], b = items[(i + 1) % n];
+      let d = b.angle - a.angle; if (i === n - 1) d += 360;
+      if (d < g - 0.01) { const push = (g - d) / 2; a.angle -= push; b.angle += push; moved = true; }
+    }
+    if (!moved) break;
+  }
+  return items;
 }
 
 /** Anchor angles (degrees; 0 = right, 90 = bottom) for a stance band. Supportive right, sceptical
@@ -285,20 +331,20 @@ export function stanceAnchors(bucket, ring = 1) {
 
 /** The spread step for a ring: about 84 px of arc between neighbours (room for a label), never
  * under 12°. */
-export function ringStep(ring) {
-  const r = ringRadius(ring) || 105;
+export function ringStep(ring, f = 1) {
+  const r = ringRadius(ring, f) || 105;
   return Math.max(12, (84 / r) * 180 / Math.PI);
 }
 
 /** The angle of the index-th actor (0-based) of one stance band in one ring. Actors take the band's
  * anchors in turn; once every anchor is used they spread out from it, alternating sign and
  * widening: anchor, +step, −step, +2·step, −2·step, … */
-export function ringAngle(bucket, index, ring = 1) {
+export function ringAngle(bucket, index, ring = 1, f = 1) {
   const anchors = stanceAnchors(bucket, ring);
   const a = anchors[index % anchors.length];
   const j = Math.floor(index / anchors.length);
   const k = Math.ceil(j / 2), sign = j % 2 === 1 ? 1 : -1;
-  return a + sign * k * ringStep(ring);
+  return a + sign * k * ringStep(ring, f);
 }
 
 /** Place every actor: {placed: Map node_id → {x, y, ring, angle}, unplaced: [actor]}. Within a ring
@@ -308,29 +354,47 @@ export function ringPlacement(actors, { stanceMeasure = "stance", powerMeasure =
   const placed = new Map();
   const unplaced = [];
   const buckets = new Map();
+  const counts = {};
   for (const a of actors) {
     const ring = ringOf(a.role);
     if (!ring) { unplaced.push(a); continue; }
+    counts[ring] = (counts[ring] || 0) + 1;
     const b = colourBucket(judgement(a, stanceMeasure), scale);
     const key = `${ring}|${b === null ? 0 : b}`;
     if (!buckets.has(key)) buckets.set(key, []);
     buckets.get(key).push(a);
   }
+  const f = ringScale(counts);
+  const byRing = new Map();
   for (const [key, list] of buckets) {
     const [ringS, bS] = key.split("|");
     const ring = Number(ringS), b = Number(bS);
     list.sort((p, q) => (judgement(q, powerMeasure) ?? -1) - (judgement(p, powerMeasure) ?? -1)
       || String(p.name || "").localeCompare(String(q.name || "")) || String(p.node_id).localeCompare(String(q.node_id)));
     list.forEach((a, i) => {
-      const angle = ringAngle(b, i, ring);
-      const th = angle * Math.PI / 180, r = ringRadius(ring);
+      if (!byRing.has(ring)) byRing.set(ring, []);
+      byRing.get(ring).push({ a, angle: ringAngle(b, i, ring, f) });
+    });
+  }
+  // Two stance bands spreading out from their anchors can meet: relax each ring so neighbours
+  // keep a label's room apart (outside the rings, r = 338, too).
+  for (const [ring, items] of byRing) {
+    const rows = ringRows(ring, counts[ring] || items.length);
+    // a label's room of arc between neighbours (RING_ARC), halved when two rows stagger
+    spreadAngles(items, ((RING_ARC / ringRadius(ring, f)) * 180 / Math.PI * 0.92) / rows);
+    items.sort((p, q) => p.angle - q.angle);
+    items.forEach((it, i) => {
+      const { a, angle } = it;
+      const r = ringRadius(ring, f) + (rows === 2 ? (i % 2 ? 1 : -1) * ROW_OFFSET[ring] * f : 0);
+      const th = angle * Math.PI / 180;
       let x = RINGS.cx + r * Math.cos(th), y = RINGS.cy + r * Math.sin(th);
-      y = Math.max(24, Math.min(624, y));
-      placed.set(a.node_id, { x: Math.round(x * 10) / 10, y: Math.round(y * 10) / 10, ring, angle });
+      const [, vy, , vh] = ringsView(f);
+      y = Math.max(vy + 24, Math.min(vy + vh - 36, y));
+      placed.set(a.node_id, { x: Math.round(x * 10) / 10, y: Math.round(y * 10) / 10, ring, angle: Math.round(angle * 10) / 10 });
     });
   }
   unplaced.sort((p, q) => String(p.name || "").localeCompare(String(q.name || "")));
-  return { placed, unplaced };
+  return { placed, unplaced, scale: f };
 }
 
 /* ---------------------------------------------------------------- Network layout */
@@ -600,7 +664,13 @@ export function groupBubbles(actors, by = "country") {
   const groups = new Map();
   for (const a of actors) {
     let label;
-    if (by === "country") label = Array.isArray(a.countries) && a.countries.length ? String(a.countries[0]) : null;
+    // A country sits in its own bubble; someone with no "works on" link falls back to the
+    // map's own grouping text (imported trackers filed people under their country's name).
+    if (by === "country") {
+      label = Array.isArray(a.countries) && a.countries.length ? String(a.countries[0])
+        : a.kind === "country" && a.name ? String(a.name)
+        : a.grouping ? String(a.grouping) : null;
+    }
     else label = a.grouping ? String(a.grouping) : null;
     const key = label === null ? "\u0000none" : label;
     if (!groups.has(key)) groups.set(key, { key, label: label === null ? (by === "country" ? "No country" : "No group") : label, count: 0, ids: [] });
@@ -819,10 +889,10 @@ export class TfsPowerMap extends Base {
     }
     const ids = new Set(actors.map((a) => a.node_id));
     const links = drawableLinks(this._data, ids);
-    let pos = new Map(), unplaced = [];
+    let pos = new Map(), unplaced = [], ringF = 1;
     if (mode === "rings") {
       const p = ringPlacement(actors, { stanceMeasure: M.colour, powerMeasure: M.size, scale: M.scale });
-      pos = p.placed; unplaced = p.unplaced;
+      pos = p.placed; unplaced = p.unplaced; ringF = p.scale;
     } else if (mode === "network") {
       const key = [...ids].sort().join(",") + "|" + links.length;
       if (!this._layoutCache.has(key)) {
@@ -836,7 +906,7 @@ export class TfsPowerMap extends Base {
       for (const [id, p] of this._dragPos) if (pos.has(id)) pos.set(id, p);
     }
     const byId = new Map(actors.map((a) => [a.node_id, a]));
-    return { all, actors, byId, links, pos, unplaced, mode, groups, groupLabel, M };
+    return { all, actors, byId, links, pos, unplaced, mode, groups, groupLabel, M, ringF };
   }
 
   /* ---- render */
@@ -849,6 +919,15 @@ export class TfsPowerMap extends Base {
     }
     const sc = this._scene();
     this._sc = sc;
+    // A grown drawing would shrink every name on screen: draw them larger by about √f to keep
+    // them readable (the shapes keep their size, which is what makes the room).
+    this.style.setProperty("--pm-label-k", sc.mode === "rings" ? String(Math.round(Math.sqrt(sc.ringF || 1) * 100) / 100) : "1");
+    // Rings grow when a ring is crowded: show the grown drawing whole unless the viewer has zoomed.
+    if (sc.mode === "rings" && this._ringF !== sc.ringF) {
+      const was = this._ringF === undefined ? VIEWBOX : ringsView(this._ringF);
+      if (this._view.every((v, i) => Math.abs(v - was[i]) < 0.5) || this._ringF === undefined) this._view = ringsView(sc.ringF);
+      this._ringF = sc.ringF;
+    }
     if (this._fitNext) { this._fitNext = false; this._view = this._fitView(sc) || this._view; }
     const linkVisible = new Set();
     const editable = this.editable;
@@ -998,17 +1077,18 @@ export class TfsPowerMap extends Base {
 
   _ringsBg() {
     const { cx, cy, bands } = RINGS;
+    const f = (this._sc && this._sc.ringF) || 1;
     const [r1, r2, r3] = this._ringLabels();
     return svg("g", { class: "ringsbg", "aria-hidden": "true" }, [
-      svg("circle", { class: "band b3", cx, cy, r: bands[2] }),
-      svg("circle", { class: "band b2", cx, cy, r: bands[1] }),
-      svg("circle", { class: "band b1", cx, cy, r: bands[0] }),
-      svg("text", { class: "ringlab", x: cx, y: cy - 132, text: r1 }),
-      svg("text", { class: "ringlab", x: cx, y: cy - 216, text: r2 }),
-      svg("text", { class: "ringlab", x: cx, y: cy - 284, text: r3 }),
-      svg("text", { class: "sidelab", x: 900, y: 334, style: "text-anchor:start", text: "Supportive →" }),
-      svg("text", { class: "sidelab", x: 260, y: 334, style: "text-anchor:end", text: "← Sceptical" }),
-      svg("text", { class: "sidelab", x: cx, y: 652, text: "Neutral or unknown" }),
+      svg("circle", { class: "band b3", cx, cy, r: bands[2] * f }),
+      svg("circle", { class: "band b2", cx, cy, r: bands[1] * f }),
+      svg("circle", { class: "band b1", cx, cy, r: bands[0] * f }),
+      svg("text", { class: "ringlab", x: cx, y: cy - (bands[0] - 8) * f, text: r1 }),
+      svg("text", { class: "ringlab", x: cx, y: cy - (bands[1] - 12) * f, text: r2 }),
+      svg("text", { class: "ringlab", x: cx, y: cy - (bands[2] - 21) * f, text: r3 }),
+      svg("text", { class: "sidelab", x: cx + 320 * f, y: cy + 4, style: "text-anchor:start", text: "Supportive →" }),
+      svg("text", { class: "sidelab", x: cx - 320 * f, y: cy + 4, style: "text-anchor:end", text: "← Sceptical" }),
+      svg("text", { class: "sidelab", x: cx, y: cy + 322 * f, text: "Neutral or unknown" }),
     ]);
   }
 
@@ -1282,7 +1362,8 @@ export class TfsPowerMap extends Base {
   }
   _fit() {
     const sc = this._sc;
-    this._view = (sc && sc.mode === "network" && this._fitView(sc)) || VIEWBOX.slice();
+    this._view = (sc && sc.mode === "network" && this._fitView(sc))
+      || (sc && sc.mode === "rings" ? ringsView(sc.ringF || 1) : VIEWBOX.slice());
     this._render();
   }
   _fitView(sc) {

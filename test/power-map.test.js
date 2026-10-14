@@ -4,7 +4,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   shapeD, nodeRadius, trimRadius, wrapLabel, numeric, stanceBucket, colourBucket, relKey,
-  ringOf, ringRadius, stanceAnchors, ringAngle, ringPlacement, RINGS,
+  ringOf, ringRadius, stanceAnchors, ringAngle, ringPlacement, RINGS, ringScale, ringsView, spreadAngles,
   labelSet, nodeKeys, keyFilter, keyRows, linkLanes, linkPath, linkWidth, linkClass, linkId,
   isResearched, liveActors, drawableLinks, groupBubbles, groupingOf, bubbleLayout, opensGrouped,
   networkLayout, NET_BOX, partialText, LINK_KINDS, LINK_ORDER, DEFAULT_RING_LABELS, TfsPowerMap,
@@ -86,7 +86,7 @@ test("ring = role on this map; no role means the tray", () => {
   for (const r of ["affected", "ally", "tfs", "other"]) assert.equal(ringOf(r), 4, r);
   assert.equal(ringOf(null), 0);
   assert.equal(ringOf(undefined), 0);
-  assert.deepEqual([1, 2, 3, 4].map(ringRadius), [105, 186, 266, 338]);
+  assert.deepEqual([1, 2, 3, 4].map((r) => ringRadius(r)), [105, 186, 266, 338]);
 });
 
 test("angle from stance: +2 → 0°, +1 → about ±40°, 0 → 90°, −1 → about ±140°, −2 → 180°", () => {
@@ -382,4 +382,38 @@ test("record text never goes through innerHTML", async () => {
   const { readFile } = await import("node:fs/promises");
   const src = await readFile(new URL("../power-map.js", import.meta.url), "utf8");
   assert.doesNotMatch(src, /innerHTML|outerHTML|insertAdjacentHTML/);
+});
+
+
+test("a country actor groups under its own name; no works_on falls back to the grouping", () => {
+  const g = groupBubbles([
+    { node_id: "c1", kind: "country", name: "Arcadia" },
+    { node_id: "p1", kind: "person", countries: ["Arcadia"] },
+    { node_id: "p2", kind: "person", grouping: "Arcadia" },
+    { node_id: "p3", kind: "person" },
+  ], "country");
+  const by = Object.fromEntries(g.map((x) => [x.label, x.count]));
+  assert.deepEqual(by, { Arcadia: 3, "No country": 1 });
+});
+
+
+test("a crowded ring grows so every actor keeps a label's room, and nobody overlaps", () => {
+  assert.equal(ringScale({ 1: 6 }), 1, "six power holders fit the design's ring");
+  assert.ok(ringScale({ 1: 30 }) > 1, "thirty need a bigger drawing");
+  const f = ringScale({ 1: 12 });
+  assert.ok(f > 1.5 && f < 2.2, String(f));
+  const actors = Array.from({ length: 12 }, (_, i) => ({ node_id: "n" + i, name: "Actor " + i, role: "decision_maker",
+    judgements: i % 3 ? {} : { stance: { value: 1 } } }));
+  const { placed, scale } = ringPlacement(actors);
+  assert.equal(scale, f);
+  const pts = [...placed.values()];
+  for (let i = 0; i < pts.length; i++) for (let j = i + 1; j < pts.length; j++) {
+    const d = Math.hypot(pts[i].x - pts[j].x, pts[i].y - pts[j].y);
+    assert.ok(d >= 80, `actors ${i} and ${j} are ${d.toFixed(1)} apart`);
+  }
+  const [x0, y0, w, h] = ringsView(f);
+  for (const p of pts) assert.ok(p.x > x0 && p.x < x0 + w && p.y > y0 && p.y < y0 + h);
+  const items = spreadAngles([{ angle: 90 }, { angle: 91 }, { angle: 92 }], 20);
+  const sorted = items.map((x) => x.angle).sort((a, b) => a - b);
+  assert.ok(sorted[1] - sorted[0] >= 19.9 && sorted[2] - sorted[1] >= 19.9);
 });
