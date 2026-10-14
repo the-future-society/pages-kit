@@ -52,6 +52,18 @@ const Base = globalThis.HTMLElement || class {};
 
 /** The served fields a page shows: all of them, or the `fields` attribute's names in its order.
  * Unknown names are ignored, never invented; a repeated name appears once. */
+/** The served fields a form may show for `rec` (null on create). A record TFS itself holds
+ * (`store: "tfs"`, kit 1.7.0) is described without a row, so the form lists every field ANY row
+ * of the table takes; the record's `editable` says which THIS row takes, and the rest are left
+ * out (a person-made link has no AI decision; a CRM actor's name is the CRM's). A Coda record or
+ * an older server keeps every served field, a non-editable one shown read-only. */
+export function recordFields(served, rec) {
+  const list = Array.isArray(served) ? served : [];
+  if (!rec || rec.store !== "tfs") return list.slice();
+  const editable = rec.editable || {};
+  return list.filter((f) => Object.prototype.hasOwnProperty.call(editable, f.name));
+}
+
 export function selectFields(served, attr) {
   const list = Array.isArray(served) ? served : [];
   if (attr == null || !String(attr).trim()) return list.slice();
@@ -194,7 +206,14 @@ export function lockedByFieldset(el) {
   return !!(el && typeof el.closest === "function" && el.closest("fieldset")?.disabled);
 }
 
-/** A dropdown's options with the current value kept even when no longer offered. */
+/** The options a person may CHOOSE: `hidden` ones (kit 1.7.0: a value a record may hold, shown by
+    its label, never offered) are left out. Older servers send no `hidden`. */
+export function offeredOptions(options) {
+  return (options || []).filter((o) => !(o && typeof o === "object" && o.hidden));
+}
+
+/** A dropdown's options with the current value kept even when no longer offered. A hidden option
+    stays in the list (so its label is found) and matching it is not "no longer offered". */
 export function optionsWithCurrent(options, current) {
   const opts = (options || []).map((o) => (typeof o === "string" ? { value: o, label: o } : o));
   const cur = Array.isArray(current) ? current : isBlank(current) ? [] : [current];
@@ -324,6 +343,7 @@ function notSavedNotice(fieldErrors, other) {
 }
 
 const SAVED_LINE = "Saved · shows on pages within a few minutes";
+const SAVED_NATIVE = "Saved · shows everywhere now";   // a record TFS itself holds (kit 1.7.0): no Coda lag
 const UNKNOWN_BODY = "It may have gone through. Check Coda before trying again.";
 export const NO_CONNECTOR = {
   title: "Add the TFS connector to edit here",
@@ -560,6 +580,8 @@ function baseView(o = {}) {
           const st = ((confirmation && typeof confirmation === "object" ? confirmation : r.confirmation) || {}).state;
           if (st === "unconfirmed") view.footer = { text: CONFIRM_WORDS.waiting, ok: true };
           else if (st === "confirmed") view.footer = { text: CONFIRM_WORDS.confirmed, ok: true };
+        } else if (r.store === "tfs") {
+          view.footer = { text: SAVED_NATIVE, ok: true };
         } else {
           view.footer = { text: rereadFailed ? "Saved · refresh to see the latest" : SAVED_LINE, ok: true };
         }
@@ -567,7 +589,7 @@ function baseView(o = {}) {
       }
       const rest = warnings.filter((x) => x.code !== "already_saved").map((x) => x.message);
       if (rest.length) view.notices.push({ tone: "info", title: null, list: rest, paragraphs: [] });
-      if (!isUpdate && r.lag && r.lag.new_row_editable_after) {
+      if (!isUpdate && r.store !== "tfs" && r.lag && r.lag.new_row_editable_after) {
         view.notices.push({ tone: "info", quiet: true, paragraphs: [[r.lag.new_row_editable_after]] });
       }
       view.locked = !!rereading;
@@ -658,7 +680,8 @@ export function loadStatusOptions(transport, table, field = "status") {
     const p = Promise.resolve(transport.call("describe_record_form", { table, mode: "edit" })).then((form) => {
       if (!form || form.refused) throw { code: "refused", message: (form && form.message) || "This form isn't available." };
       const f = (form.fields || []).find((x) => x.name === field);
-      return optionsWithCurrent(f ? f.options : [], null);
+      // The array stays an array; `store` rides along as a property (kit 1.7.0).
+      return Object.assign(optionsWithCurrent(f ? f.options : [], null), form.store ? { store: form.store } : {});
     });
     p.catch(() => per.delete(key));
     per.set(key, p);
@@ -752,7 +775,7 @@ export class StatusMenu {
   setOptions(options, current) {
     this.current = current == null ? null : current;
     const base = this.list.id || nextId("tfs-smi");
-    this.items = (options || []).map((o, i) => {
+    this.items = offeredOptions(options).map((o, i) => {
       const hint = h("span", { class: "tfs-menu__hint" });
       const li = h("li", { class: "tfs-menu__item", id: `${base}-${i}`, role: "menuitemradio", "aria-checked": "false" },
         icon("tick", "tfs-menu__tick"), statusChip(o.label || o.value, o.color), hint);
@@ -1634,7 +1657,7 @@ function multiSelect(f, id, start) {
   };
   const draw = () => {
     const q = input.value.trim().toLowerCase();
-    shown = all.filter((o) => !q || String(o.label).toLowerCase().includes(q));
+    shown = all.filter((o) => !o.hidden || vals.includes(o.value)).filter((o) => !q || String(o.label).toLowerCase().includes(q));
     if (active >= shown.length) active = shown.length - 1;
     list.replaceChildren(...shown.map((o, i) => {
       const chosen = vals.includes(o.value);
@@ -1906,7 +1929,7 @@ export class TfsRecordForm extends Base {
    * for served fields the page does not show (presets on create; the record's on edit). */
   _build() {
     const form = this.form, rec = this.record, edit = !!rec;
-    const served = form.fields || [];
+    const served = recordFields(form.fields || [], rec);
     const attr = this.getAttribute("fields");
     const shown = selectFields(served, attr);
     const presets = this.presets || {};
@@ -2042,7 +2065,7 @@ export class TfsRecordForm extends Base {
       const cur = wireOf(f, start);
       const sel = h("select", { class: "tfs-input", id });
       sel.append(h("option", { value: "", text: "Not set" }));
-      for (const o of optionsWithCurrent(f.options, cur)) sel.append(h("option", { value: o.value, text: o.label }));
+      for (const o of optionsWithCurrent(f.options, cur).filter((x) => !x.hidden || x.value === cur)) sel.append(h("option", { value: o.value, text: o.label }));
       sel.value = cur == null ? "" : cur;
       let touched = false;
       sel.addEventListener("change", () => { touched = true; });

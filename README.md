@@ -268,6 +268,7 @@ browsers within minutes. jsDelivr caches the `@1` range itself for 7 days, so a 
 fetched a broken release keeps it for a week. Do not pin `@1.x.y`: a pinned page never receives
 a fix. The current version is exported as `KIT_VERSION`.
 
+- **1.7.0** — records TFS itself holds (power maps: `store: "tfs"` on the form, record and receipt) read right: the saved line is "Saved · shows everywhere now" with no lag notice, `<tfs-status-menu>` drops "Refresh from Coda", and `<tfs-kind>` labels `power_map` (MAP), `power_map_actor`/`power_map_node` (ACTOR), `power_map_link` (LINK), `power_map_judgement` (JUDGEMENT), `power_map_measure` (MEASURE), and `<tfs-record-form>` on such a record leaves out a served field the record's `editable` does not list (an AI decision on a person-made row, a CRM actor's name) instead of showing it read-only. options may be hidden (label-only: shown on the chip, never offered as a choice). Older servers send no `store` or `hidden` and behave as before.
 - **1.6.0** — `autoRefresh`: a page re-reads itself every 5 minutes while visible and on return to the tab, never under an edit, with an "Updated" time; `editing` on `<tfs-record-form>` and `<tfs-status-menu>`.
 - **1.5.1** — fix: a button the form hides (`hidden`), such as "Add task" on the failure and couldn't-load screens, was still shown, enabled and dead, because `.tfs-btn{display:inline-flex}` beat the `hidden` attribute. `.tfs-btn[hidden]{display:none}` restores it.
 

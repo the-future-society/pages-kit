@@ -28,6 +28,12 @@ export const KINDS = {
   questions: ["Question", "update"],
   content_calendar: ["Content", "kms"],
   risk_register: ["Risk", "update"],
+  power_map: ["MAP", "event"],
+  power_map_actor: ["ACTOR", "event"],
+  power_map_link: ["LINK", "event"],
+  power_map_judgement: ["JUDGEMENT", "event"],
+  power_map_node: ["ACTOR", "event"],
+  power_map_measure: ["MEASURE", "event"],
 };
 
 /** The label and colour class for a table: `{label, tone}`. Unknown tables are humanised

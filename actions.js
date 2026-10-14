@@ -219,10 +219,13 @@ export class TfsStatusMenu extends Base {
     const face = syncing ? h("span", { class: "tfs-status-note" }, btn, "Saved; waiting for TFS to catch up") : btn;
     // Out of the way on purpose: a quiet line at the foot of the menu, for the rare case a change
     // made in Coda hasn't reached the page. Not a toolbar button.
-    const refresh = h("button", { type: "button", class: "tfs-menu__foot",
-      title: "Read this record again from Coda, if a change made there hasn't reached this page" }, icon("sync"), "Refresh from Coda");
-    refresh.addEventListener("click", () => this._refresh(refresh));
-    this._menu.el.append(refresh);
+    // A record TFS itself holds (kit 1.7.0, `store: "tfs"`) has no Coda copy to refresh from.
+    if (!(this._options && this._options.store === "tfs")) {
+      const refresh = h("button", { type: "button", class: "tfs-menu__foot",
+        title: "Read this record again from Coda, if a change made there hasn't reached this page" }, icon("sync"), "Refresh from Coda");
+      refresh.addEventListener("click", () => this._refresh(refresh));
+      this._menu.el.append(refresh);
+    }
     this.replaceChildren(face, this._menu.el);
   }
 
