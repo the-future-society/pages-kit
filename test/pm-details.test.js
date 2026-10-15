@@ -44,6 +44,11 @@ test("map setup in words: scores with their scale, what sets size and colour, wh
   assert.deepEqual(r.drawing.slice(0, 3), [["Size of each shape", "Same for everyone"], ["Colour of each shape", "Support for AI red lines"], ["Group people by", "Country"]]);
   assert.deepEqual(r.shapes, [["Forum", "1"], ["Country", "2"]], "a removed actor is not counted");
   assert.deepEqual(r.lines, [["Member of", "2"]]);
+  const unset = setupRows({ measures: ["category"] }, {}).drawing;
+  assert.deepEqual(unset.slice(0, 2), [["Size of each shape", "Same for everyone (the default)"], ["Colour of each shape", "Same for everyone (the default)"]],
+    "a map that scores no power or stance never claims to be sized or coloured by them");
+  const scored = setupRows({ measures: ["power", "stance"] }, { measures: [{ value: "power", label: "Power" }, { value: "stance", label: "Stance" }] }).drawing;
+  assert.deepEqual(scored.slice(0, 2), [["Size of each shape", "Power (the default)"], ["Colour of each shape", "Stance (the default)"]]);
 });
 
 test("Find on this map: start-of-word matches first, then anywhere; removed people never", () => {

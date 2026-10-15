@@ -156,8 +156,12 @@ export function setupRows(map, { measures = [], kinds = {}, actors = [], links =
     return [m.label || human(k), [scale, m.description].filter(Boolean).join(" · ")];
   });
   const drawing = [
-    ["Size of each shape", map.size_measure === "none" ? "Same for everyone" : map.size_measure ? mlabel(map.size_measure) : "Power, when the map scores it"],
-    ["Colour of each shape", map.colour_measure === "none" ? "Same for everyone" : map.colour_measure ? mlabel(map.colour_measure) : "Stance, when the map scores it"],
+    // Unset: the drawing's own rule — power and stance when the map scores them, else the same
+    // for everyone (never name a score the map does not have).
+    ["Size of each shape", map.size_measure === "none" ? "Same for everyone" : map.size_measure ? mlabel(map.size_measure)
+      : (map.measures || []).includes("power") ? `${mlabel("power")} (the default)` : "Same for everyone (the default)"],
+    ["Colour of each shape", map.colour_measure === "none" ? "Same for everyone" : map.colour_measure ? mlabel(map.colour_measure)
+      : (map.measures || []).includes("stance") ? `${mlabel("stance")} (the default)` : "Same for everyone (the default)"],
     ["Group people by", { role: "Role on this map", country: "Country", group: "Group" }[map.group_by] || "Decided from the people on it"],
   ];
   const rl = Array.isArray(map.ring_labels) && map.ring_labels.length === 3 ? map.ring_labels : DEFAULT_RING_LABELS;
@@ -255,7 +259,15 @@ export class TfsActorDetails extends Base {
 
   _emit(name, detail) { this.dispatchEvent(new CustomEvent(name, { detail, bubbles: true, composed: true })); }
   _act(action, extra = {}) { this._emit("tfs-actor-action", { action, node_id: this._actor && this._actor.node_id, ...extra }); }
-  _edit(what) { this._editing = this._editing === what ? null : what; this._render(); }
+  /** Open or close one form in place. Drawn directly: the guard in _render() is for redraws
+   * from outside (a new profile, a refreshed map), never for the person's own click. */
+  _edit(what) { this._editing = this._editing === what ? null : what; this._draw(); }
+  _draw() {
+    const a = this._actor;
+    if (!a) return this._render();
+    this._stale = false;
+    this.replaceChildren(this._head(a), ...this._sections(a));
+  }
 
   _render() {
     if (!this.isConnected || !globalThis.document) return;
@@ -265,10 +277,11 @@ export class TfsActorDetails extends Base {
         el("span", { text: "Click anyone — on the map, in the list or on a card — to see where they stand, who at TFS knows them and what has been logged." })));
       return;
     }
-    // A form being typed in must survive a re-render (the map refreshing behind it).
-    const keep = this._editing ? this.querySelector(`[data-edit="${this._editing}"] tfs-record-form`) : null;
-    this.replaceChildren(this._head(a), ...this._sections(a));
-    if (keep) { const slot = this.querySelector(`[data-edit="${this._editing}"]`); if (slot) slot.replaceChildren(keep); }
+    // While a form is open nothing redraws: moving a <tfs-record-form> disconnects it, and a
+    // reconnected form drew empty (live walk 2026-10-15: the profile arriving a second after the
+    // click redrew the panel under the open form). The panel catches up when the form closes.
+    if (this._editing && this.querySelector(`[data-edit="${this._editing}"] tfs-record-form`)) { this._stale = true; return; }
+    this._draw();
   }
 
   _head(a) {
@@ -316,10 +329,10 @@ export class TfsActorDetails extends Base {
   /** The kit's own form, inline, closing back to the read view; a save tells the page to re-read. */
   _form(what, attrs) {
     const f = el("tfs-record-form", attrs);
-    f.addEventListener("tfs-close", (e) => { e.stopPropagation(); this._editing = null; this._render(); });
+    f.addEventListener("tfs-close", (e) => { e.stopPropagation(); this._editing = null; this._draw(); });
     f.addEventListener("tfs-saved", () => {
       this._emit("tfs-actor-saved", { node_id: this._actor && this._actor.node_id, table: attrs.table });
-      setTimeout(() => { if (this._editing === what) { this._editing = null; this._render(); } }, 900);
+      setTimeout(() => { if (this._editing === what) { this._editing = null; this._draw(); } }, 900);
     });
     return el("div", { class: "inform", "data-edit": what }, f);
   }

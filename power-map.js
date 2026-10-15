@@ -1563,8 +1563,14 @@ export class TfsPowerMap extends Base {
     const sections = keyRows(nodesOnMap, sc.links, this.layout, { ringLabels: this._ringLabels(), scale: M.scale, stanceMeasure: M.colour, colourLabels: M.colourLabels });
     const anyOff = Object.values(this._off).some(Boolean);
     const gm = sc.mode === "bubbles" ? (this.options.groupMap || {}) : null;
-    const o = gm ? { sizeLabel: "people on this map", colourLabel: gm.colourLabel || "the countries map's score" } : this.options;
-    if (M.size === "none" || (M.size === "_none" && !gm)) { const i = sections.findIndex((x) => x.id === "size"); if (i >= 0) sections.splice(i, 1); }
+    const o = gm ? { sizeLabel: "people on this map", colourLabel: gm.colourLabel || "the countries map's score" }
+      : sc.mode === "bubbles" ? { ...this.options, sizeLabel: "people on this map" } : this.options;
+    // Never explain a size or colour nobody on this map is scored for (a map with no power score
+    // was keyed "Size · power over this goal" over shapes all the same size).
+    const scored = (m) => nodesOnMap.some((a) => judgement(a, m) !== null);
+    const sizeLive = !!gm || sc.mode === "bubbles" || (M.size !== "none" && M.size !== "_none" && scored(M.size));
+    if (!sizeLive) { const i = sections.findIndex((x) => x.id === "size"); if (i >= 0) sections.splice(i, 1); }
+    if (!gm && M.colour !== "_none" && !scored(M.colour)) { const i = sections.findIndex((x) => x.id === "colour"); if (i >= 0) sections.splice(i, 1); }
     if (gm && M.colour === "_none") { const i = sections.findIndex((x) => x.id === "colour"); if (i >= 0) sections.splice(i, 1); }
     const key = el("div", { class: "key", role: "group", "aria-label": "Key" });
     key.appendChild(el("div", { class: "khead" }, [el("b", { text: "Key" }), el("span", { style: "display:flex;gap:6px;align-items:center" }, [
