@@ -148,7 +148,8 @@ test("ringPlacement puts each actor on its ring's radius, strongest on the ancho
 test("outside-the-rings neutral actors stay on the canvas", () => {
   const many = Array.from({ length: 6 }, (_, i) => actor("o" + i, { role: "other" }));
   const { placed } = ringPlacement(many);
-  for (const p of placed.values()) { assert.ok(p.y <= 624 && p.y >= 24); assert.ok(p.x >= -170 && p.x <= 1000); }
+  const [vx, vy, vw, vh] = ringsView(1);
+  for (const p of placed.values()) { assert.ok(p.y >= vy && p.y <= vy + vh); assert.ok(p.x >= vx && p.x <= vx + vw); }
 });
 
 /* ---------------------------------------------------------------- labels */
@@ -416,4 +417,17 @@ test("a crowded ring grows so every actor keeps a label's room, and nobody overl
   const items = spreadAngles([{ angle: 90 }, { angle: 91 }, { angle: 92 }], 20);
   const sorted = items.map((x) => x.angle).sort((a, b) => a - b);
   assert.ok(sorted[1] - sorted[0] >= 19.9 && sorted[2] - sorted[1] >= 19.9);
+});
+
+
+test("the rings view hugs the rings, keeps room for the Key in screen pixels, and takes the panel's shape", () => {
+  const plain = ringsView(1);
+  assert.ok(Math.abs(plain[2] / plain[3] - 1170 / 660) < 0.01);
+  const narrow = ringsView(1.8, { w: 455, h: 480, keyOpen: false });
+  assert.ok(Math.abs(narrow[2] / narrow[3] - 455 / 480) < 0.01, "a narrow panel gets a narrow view, not a letterbox");
+  const wide = ringsView(1.8, { w: 1060, h: 598, keyOpen: true });
+  const noKey = ringsView(1.8, { w: 1060, h: 598, keyOpen: false });
+  assert.ok(wide[0] < noKey[0], "room for the Key is added on the left");
+  // the grown rings use far more of a narrow panel than the old box (2082 units wide at f = 1.78)
+  assert.ok(narrow[2] < 1700, String(narrow[2]));
 });

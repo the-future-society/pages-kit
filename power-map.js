@@ -292,10 +292,25 @@ export function ringScale(counts) {
   return Math.min(3, Math.round(f * 100) / 100);
 }
 
-/** The Rings viewBox for a scale: the design's box grown about the rings' centre. */
-export function ringsView(f = 1) {
-  const [x0, y0, w, h] = VIEWBOX;
-  return [RINGS.cx - (RINGS.cx - x0) * f, RINGS.cy - (RINGS.cy - y0) * f, w * f, h * f];
+/** The Rings viewBox: the rings (grown by `f`) and their side labels, tight, so the drawing
+ * fills the panel. `box` is the drawing's size on screen ({w, h} in px) and whether the Key
+ * overlay is open on the left: room for the Key is reserved in SCREEN pixels (it does not grow
+ * with the rings), and the box is widened or heightened to the panel's own shape so nothing is
+ * letterboxed. Without `box`: the design's 1170×660 shape. */
+export const KEY_PX = 262;
+export function ringsView(f = 1, box = null) {
+  const { cx, cy } = RINGS;
+  const rx = RINGS.actorR[4] * f + 120, ryTop = RINGS.actorR[4] * f + 20, ryBot = RINGS.actorR[4] * f + 30;
+  let x0 = cx - rx, y0 = cy - ryTop, w = 2 * rx, h = ryTop + ryBot;
+  const bw = box && box.w > 0 ? box.w : null, bh = box && box.h > 0 ? box.h : null;
+  if (bw && box.keyOpen && bw > KEY_PX + 320) {
+    const extra = (w * KEY_PX) / (bw - KEY_PX);
+    x0 -= extra; w += extra;
+  }
+  const ar = bw && bh ? bw / bh : VIEWBOX[2] / VIEWBOX[3];
+  if (w / h < ar) { const nw = h * ar; x0 -= (nw - w) / 2; w = nw; }
+  else { const nh = w / ar; y0 -= (nh - h) / 2; h = nh; }
+  return [x0, y0, w, h].map((v) => Math.round(v * 10) / 10);
 }
 
 /** Push apart actors on one ring that sit closer than `gap` degrees, keeping their order (a few
@@ -833,9 +848,19 @@ export class TfsPowerMap extends Base {
     ensurePmCss();
     globalThis.document.addEventListener("keydown", this._onDocKey);
     globalThis.document.addEventListener("pointerdown", this._onDocDown, true);
+    // The Rings view is fitted to the panel's width: re-fit when the panel changes size (the
+    // details panel opening, the window resizing). Only a real width change re-draws.
+    if (globalThis.ResizeObserver && !this._ro) {
+      this._ro = new ResizeObserver(() => {
+        const w = Math.round(this.clientWidth || (this.parentElement && this.parentElement.clientWidth) || 0);
+        if (w && w !== this._lastW) { this._lastW = w; if (this.layout === "rings") this._render(); }
+      });
+      this._ro.observe(this);
+    }
     this._render();
   }
   disconnectedCallback() {
+    if (this._ro) { this._ro.disconnect(); this._ro = null; }
     globalThis.document.removeEventListener("keydown", this._onDocKey);
     globalThis.document.removeEventListener("pointerdown", this._onDocDown, true);
     clearTimeout(this._lpTimer);
@@ -898,9 +923,8 @@ export class TfsPowerMap extends Base {
       if (!this._layoutCache.has(key)) {
         const laid = networkLayout(actors, links, { radius: (a) => nodeRadius(judgement(a, M.size)) });
         this._layoutCache.set(key, laid);
-        let over = false;
-        for (const p of laid.values()) if (p.x < NET_BOX.x0 - 1 || p.x > NET_BOX.x1 + 1 || p.y < NET_BOX.y0 - 1 || p.y > NET_BOX.y1 + 1) { over = true; break; }
-        this._fitNext = over;
+        // A new layout is always fitted to the panel: a small map otherwise sat in a corner.
+        this._fitNext = true;
       }
       pos = new Map(this._layoutCache.get(key));
       for (const [id, p] of this._dragPos) if (pos.has(id)) pos.set(id, p);
@@ -913,7 +937,10 @@ export class TfsPowerMap extends Base {
   _render() {
     if (!globalThis.document || !this.isConnected) return;
     if (this._keyOpen === null) {
-      this._keyOpen = !phoneNow();
+      // The Key starts open only where it leaves the drawing room: on a phone, or in a panel under
+      // 760px (the details panel open beside it), it starts closed behind the Key button.
+      const w0 = this.clientWidth || (this.parentElement && this.parentElement.clientWidth) || 0;
+      this._keyOpen = !phoneNow() && (!w0 || w0 >= 760);
       const root = (this.closest && this.closest(".pm")) || this;
       if (root.classList) root.classList.toggle("keyopen", this._keyOpen);
     }
@@ -922,11 +949,13 @@ export class TfsPowerMap extends Base {
     // A grown drawing would shrink every name on screen: draw them larger by about √f to keep
     // them readable (the shapes keep their size, which is what makes the room).
     this.style.setProperty("--pm-label-k", sc.mode === "rings" ? String(Math.round(Math.sqrt(sc.ringF || 1) * 100) / 100) : "1");
-    // Rings grow when a ring is crowded: show the grown drawing whole unless the viewer has zoomed.
-    if (sc.mode === "rings" && this._ringF !== sc.ringF) {
-      const was = this._ringF === undefined ? VIEWBOX : ringsView(this._ringF);
-      if (this._view.every((v, i) => Math.abs(v - was[i]) < 0.5) || this._ringF === undefined) this._view = ringsView(sc.ringF);
-      this._ringF = sc.ringF;
+    // Rings: show the whole drawing, fitted to the panel's size and the Key, unless the viewer
+    // has zoomed or panned away from the last fitted view.
+    if (sc.mode === "rings") {
+      const auto = ringsView(sc.ringF, this._ringBox());
+      const was = this._ringAuto;
+      if (!was || this._view.every((v, i) => Math.abs(v - was[i]) < 0.5) || this._view.every((v, i) => Math.abs(v - VIEWBOX[i]) < 0.5)) this._view = auto;
+      this._ringAuto = auto;
     }
     if (this._fitNext) { this._fitNext = false; this._view = this._fitView(sc) || this._view; }
     const linkVisible = new Set();
@@ -1360,10 +1389,19 @@ export class TfsPowerMap extends Base {
     this._menu = null;
     this._render();
   }
+  /** The drawing's screen size and whether the Key covers its left (for ringsView). On a phone
+   * the drawing pans inside its own box, so the design's shape is kept. */
+  _ringBox() {
+    if (phoneNow()) return null;
+    const w = this.clientWidth || (this.getBoundingClientRect ? this.getBoundingClientRect().width : 0)
+      || (this.parentElement && this.parentElement.clientWidth) || 0;
+    if (!w) return null;
+    return { w, h: Math.max(480, (w * VIEWBOX[3]) / VIEWBOX[2]), keyOpen: !!this._keyOpen };
+  }
   _fit() {
     const sc = this._sc;
     this._view = (sc && sc.mode === "network" && this._fitView(sc))
-      || (sc && sc.mode === "rings" ? ringsView(sc.ringF || 1) : VIEWBOX.slice());
+      || (sc && sc.mode === "rings" ? ringsView(sc.ringF || 1, this._ringBox()) : VIEWBOX.slice());
     this._render();
   }
   _fitView(sc) {

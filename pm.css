@@ -507,3 +507,5 @@
 tfs-power-map .nd text{font-size:calc(12.5px * var(--pm-label-k,1))}
 tfs-power-map .ringlab{font-size:calc(11px * var(--pm-label-k,1))}
 tfs-power-map .sidelab{font-size:calc(12px * var(--pm-label-k,1))}
+/* kit 1.8.2: the map element is a block, so its width is the panel's (the Rings view fits to it). */
+tfs-power-map{display:block}
