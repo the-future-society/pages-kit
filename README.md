@@ -281,9 +281,9 @@ That repository is a mirror: the kit is developed in The Future Society's privat
 copied there for each release, which is published to npm from it with provenance. See its
 `CONTRIBUTING.md`; bug reports are welcome as issues there.
 
-## Power maps (1.8.0)
+## Power maps (1.8.0, 1.9.0)
 
-Six elements for a power-map page. They read nothing themselves except where noted; the page
+Nine elements for a power-map page. They read nothing themselves except where noted; the page
 passes the map it loaded (`get_power_map`'s shape) and listens for events.
 
 | Element | What it is | Key attributes / events |
@@ -294,6 +294,13 @@ passes the map it loaded (`get_power_map`'s shape) and listens for events.
 | `<tfs-section>` | A collapsible section whose whole heading is the toggle; open state remembered. | `heading`, `count`, `kind-table`, `key`, `open`, `info` |
 | `<tfs-record-peek>` | A record (a KMS entry) opened inside the page, with Edit and "Open in Coda". Reads `get_record_for_editing`. | `table`, `row`, `source`, `editable` |
 | `<tfs-view-switch>` | Rings / Network / List / Cards, remembered per viewer. | `views`, `key`, `default`; event `tfs-view-change` |
+| `<tfs-actor-details>` (1.9) | THE details panel for an actor, the same in every view. An editor edits everything in place: the CRM contact or organisation itself (saved to the CRM), a seat / group / forum / country, its place on this map (role, countries or group, owner, messenger) and each score. | properties `actor`, `profile`, `context` ({map, labels, editable, onMap, groupBy, stakeCount, profileError}); events `tfs-actor-action`, `tfs-actor-select`, `tfs-actor-saved` |
+| `<tfs-map-setup>` (1.9) | How a map is set up — kind, objective, team, owner, parent and child maps, scores, what sets size and colour, rings, grouping, what is on it — with "Edit setup" for editors. | properties `map`, `context` ({measures, kinds, actors, links, editable}); events `tfs-map-saved`, `tfs-map-open`, `tfs-close` |
+| `<tfs-map-find>` (1.9) | "Find on this map": type a name, pick. Pair it with `<tfs-power-map>.focusActor(id)`. | property `actors`; event `tfs-find` |
+
+The drawing (1.8.3+) is the Samples page's d3 force layout: scroll or pinch to zoom, drag someone
+and the others make room, every name shown, a large map opens as its countries, and people who
+share a CRM organisation are drawn joined to it.
 
 Their styles (`pm.css`) are injected once with the elements. The page's root needs
 `class="pm"` and a `data-theme` (`light`, `dark` or `auto`). Removing someone from a map is

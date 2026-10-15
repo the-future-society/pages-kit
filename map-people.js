@@ -151,6 +151,10 @@ export function matchView(opt, onMap) {
 
 /** The type-ahead's last item: "Add “typed” as a new contact". */
 export function newContactText(q) { return `Add “${String(q || "").trim()}” as a new contact`; }
+/** The other kinds of actor a person can add that are not CRM records (kit 1.9). */
+export const NEW_NODE_KINDS = [["seat", "Seat", "a role whose holder changes"], ["group", "Group of people", "e.g. “NL ministers”"],
+  ["forum", "Forum", "e.g. the G7, the OECD"], ["country", "Country", ""]];
+export function newNodeText(q) { return `Add “${String(q || "").trim()}” as a seat, group, forum or country`; }
 
 /** A typed name as a starting full name: trimmed, first letter capitalised. */
 export function startName(q) {
@@ -527,14 +531,15 @@ export class TfsMapPeople extends Base {
     const focusId = act && act.id ? act.id : null;
     let caret = null;
     try { caret = act && typeof act.selectionStart === "number" ? [act.selectionStart, act.selectionEnd] : null; } catch { caret = null; }
-    const aside = el("aside", { class: "drawer", "aria-label": "Add people to this map" });
+    const aside = el("aside", { class: "drawer", "aria-label": "Add to this map" });
     const close = el("button", { type: "button", class: "xbtn", "aria-label": "Close", onclick: () => this._done() }, closeIcon(16));
     aside.append(el("div", { class: "dh" },
-      el("div", { style: "flex: 1; min-width: 0" }, el("b", { text: "Add people to this map" }),
+      el("div", { style: "flex: 1; min-width: 0" }, el("b", { text: "Add to this map" }),
         this.getAttribute("map-name") ? el("small", { text: this.getAttribute("map-name") }) : null),
       close));
     const body = el("div", { class: "db" });
-    if (this.quick) body.append(this._quickView());
+    if (this.nodeNew) body.append(this._nodeView());
+    else if (this.quick) body.append(this._quickView());
     else {
       body.append(this._tabs());
       body.append(this.tab === "browse" ? this._browseView() : this._searchView());
@@ -580,6 +585,7 @@ export class TfsMapPeople extends Base {
   _rows() {
     const rows = this._matches.map((o) => matchView(o, { has: (x) => this._isOn(x) }));
     if (this._q.trim()) rows.push({ id: "__new", newContact: true, disabled: false });
+    if (this._q.trim()) rows.push({ id: "__node", newNode: true, disabled: false });
     return rows;
   }
 
@@ -612,6 +618,13 @@ export class TfsMapPeople extends Base {
           "aria-selected": String(i === this._active), onclick: () => this._openQuick() }, plusIcon(),
           el("span", {}, el("span", { class: "new", text: newContactText(this._q) }),
             el("small", { text: "Not in the CRM yet? Create them and add them here in one go." })), el("span")));
+        return;
+      }
+      if (r.newNode) {
+        list.append(el("button", { type: "button", class: `res${i === this._active ? " on" : ""}`, role: "option", id: `${listId}-${i}`,
+          "aria-selected": String(i === this._active), onclick: () => { this.nodeNew = { name: this._q.trim(), state: "pick", message: "" }; this._render(); } }, plusIcon(),
+          el("span", {}, el("span", { class: "new", text: newNodeText(this._q) }),
+            el("small", { text: "Not a person or an organisation: a role, a group, a forum or a country." })), el("span")));
         return;
       }
       list.append(el("button", { type: "button", class: `res${i === this._active ? " on" : ""}`, role: "option", id: `${listId}-${i}`,
@@ -664,7 +677,9 @@ export class TfsMapPeople extends Base {
       const i = this._active >= 0 ? this._active : firstEnabled(rows);
       const r = rows[i];
       if (!r || r.disabled) return;
-      if (r.newContact) this._openQuick(); else this._addMatch(this._matches[i]);
+      if (r.newContact) this._openQuick();
+      else if (r.newNode) { this.nodeNew = { name: this._q.trim(), state: "pick", message: "" }; this._render(); }
+      else this._addMatch(this._matches[i]);
     } else if (e.key === "Escape" && this._q) {
       e.preventDefault(); this._q = ""; this._search();
     }
@@ -700,6 +715,38 @@ export class TfsMapPeople extends Base {
     }
     this._render();
     return out;
+  }
+
+  /** A new seat, group, forum or country: pick its kind, the node is created, then added here. A
+   * name already on TFS's maps as that kind is added instead of duplicated (the server says which). */
+  _nodeView() {
+    const n = this.nodeNew;
+    const box = el("div", { class: "nodenew", style: "display:flex;flex-direction:column;gap:10px" },
+      el("b", { text: `Add “${n.name}” as…` }));
+    const kinds = el("div", { style: "display:flex;flex-direction:column;gap:6px" });
+    for (const [k, label, hint] of NEW_NODE_KINDS) {
+      kinds.append(el("button", { type: "button", class: "res", disabled: n.state === "saving", onclick: () => this._createNode(k) },
+        shapeIcon(k, 20), el("span", {}, el("b", { text: label }), hint ? el("small", { text: hint }) : null), el("span")));
+    }
+    box.append(kinds);
+    if (n.state === "saving") box.append(el("span", { class: "quiet", text: "Saving…" }));
+    if (n.message) box.append(el("div", { class: "quiet", role: "alert", text: n.message }));
+    box.append(el("button", { type: "button", class: "btn-2", style: "align-self:flex-start", onclick: () => { this.nodeNew = null; this._render(); }, text: "Back to search" }));
+    return box;
+  }
+  async _createNode(kind) {
+    const n = this.nodeNew; if (!n) return;
+    n.state = "saving"; n.message = ""; this._render();
+    const out = await saveOnce(this.transport, "power_map_node", { kind, name: n.name });
+    let rowId = out.outcome === "saved" ? out.receipt.row_id : null;
+    if (!rowId && out.outcome === "refused") {
+      const dup = (out.receipt.refusals || []).find((x) => x && x.code === "already_exists" && x.existing_row_id);
+      if (dup) rowId = dup.existing_row_id;
+    }
+    if (!rowId) { n.state = "pick"; n.message = out.message || "Nothing was saved."; this._render(); return; }
+    const id = String(rowId).startsWith("node:") ? String(rowId) : `node:${rowId}`;
+    this.nodeNew = null; this._q = ""; this._render();
+    await this._addActor(id, n.name, kind);
   }
 
   _openQuick() {

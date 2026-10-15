@@ -25,7 +25,7 @@
  * Load from unpkg, not jsDelivr: unpkg 302s `@1` to the exact version (60-second cache) and that
  * file is immutable, so a release reaches browsers in minutes; jsDelivr caches `@1` for 7 days.
  */
-export const KIT_VERSION = "1.8.4";
+export const KIT_VERSION = "1.9.0";
 export { SERVER, KIT_CONTRACT, createTransport, kitError, checkContract, unwrap } from "./transport.js";
 export {
   SaveMachine, STATES, ConfirmWatch, confirmationKind, looksLikeCreateLag, POLL_EVERY_MS, POLL_LIMIT_MS,
@@ -64,7 +64,8 @@ export {
   linkLanes, linkPath, linkWidth, linkClass, linkTitle, linkId, isResearched, liveActors, drawableLinks,
   nodeKeys, keyFilter, keyRows, labelSet, groupBubbles, groupingOf, bubbleLayout, opensGrouped, partialText,
   LINK_KINDS, LINK_ORDER, ACTOR_KINDS, KIND_ORDER, STANCE_BANDS, REL_LABELS, REL_ORDER, ROLE_LABELS, ROLE_PICK,
-  DEFAULT_RING_LABELS, RINGS, LABEL_LIMIT, TOP_POWER, GROUP_THRESHOLD,
+  DEFAULT_RING_LABELS, RINGS, LABEL_LIMIT, TOP_POWER, GROUP_THRESHOLD, orgHubs, groupsOf, groupMembers, groupGraph,
+  supportClass, loadD3,
 } from "./power-map.js";
 export {
   TfsMapPeople, TfsQuickContact, removeActor, restoreActor, saveOnce, outcomeOf, UNKNOWN_SAVE,
@@ -79,6 +80,11 @@ export {
 import { TfsPowerMap } from "./power-map.js";
 import { TfsMapPeople, TfsQuickContact } from "./map-people.js";
 import { TfsSection, TfsViewSwitch, TfsRecordPeek } from "./pm-parts.js";
+export {
+  TfsActorDetails, TfsMapSetup, TfsMapFind, ownRecord, onMapFields, ownRows, onMapRows, setupRows, findMatches,
+  ratedBy, earlierFor, judgementPresets,
+} from "./pm-details.js";
+import "./pm-details.js";
 import { KIT_CSS } from "./kit-css.js";
 export { KIT_CSS };
 

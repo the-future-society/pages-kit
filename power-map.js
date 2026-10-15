@@ -626,6 +626,7 @@ export function nodeKeys(actor, layout = "network", { stanceMeasure = "stance", 
   if (layout === "rings") { const r = ringOf(actor.role); if (r) keys.push("ring:" + r); }
   const rel = relKey(actor);
   if (rel) keys.push("rel:" + rel);
+  if (actor.derived) keys.push("hub");
   return keys;
 }
 
@@ -663,6 +664,9 @@ export function keyRows(actors, links, layout = "network", { ringLabels = DEFAUL
   const rel = REL_ORDER.filter((r) => has.has("rel:" + r)).map((r) => ({ key: "rel:" + r, label: REL_LABELS[r], icon: { type: "rel", rel: r } }));
   if (rel.length) sections.push({ id: "rel", title: "Ring", sub: "· who at TFS knows them", rows: rel });
   const kinds = KIND_ORDER.filter((k) => has.has("kind:" + k)).map((k) => ({ key: "kind:" + k, label: ACTOR_KINDS[k].label, em: ACTOR_KINDS[k].em, icon: { type: "shape", kind: k } }));
+  // The dotted organisations drawn from the CRM (orgHubs): joined to the people who work there,
+  // NOT on this map themselves — the Key must say what that dotted outline means.
+  if (has.has("hub")) kinds.push({ key: "hub", label: "Their organisation, from the CRM", em: "· dotted: not on this map", icon: { type: "hub" } });
   if (kinds.length) sections.push({ id: "shape", title: "Shape", sub: null, rows: kinds });
   const present = new Set(links.map((l) => l.kind));
   const lines = LINK_ORDER.filter((k) => present.has(k)).map((k) => {
@@ -1215,6 +1219,18 @@ export class TfsPowerMap extends Base {
     }
     this._crowded = crowded;
     if (this._fitNext) { this._fitNext = false; this._view = this._fitView(sc) || this._view; }
+    if (this._focusPending && sc.pos.has(this._focusPending)) {
+      // centre on the found actor at a readable zoom (never zoom out to find them)
+      const p = sc.pos.get(this._focusPending);
+      const [, , w0, h0] = this._view;
+      const w = Math.min(w0, 760), h = w * (h0 / w0);
+      this._view = [p.x - w / 2, p.y - h / 2, w, h];
+      this._userView = true;
+      this._found = this._focusPending;
+      this._focusPending = null;
+      clearTimeout(this._foundTimer);
+      this._foundTimer = setTimeout(() => { this._found = null; const n = this.querySelector(".nd.found"); if (n) n.classList.remove("found"); }, 2600);
+    }
     const linkVisible = new Set();
     const editable = this.editable;
     const layout = this.layout;
@@ -1429,7 +1445,7 @@ export class TfsPowerMap extends Base {
       const { r, p } = this._geom(sc, a.node_id);
       const rel = relKey(a);
       const isForum = a.kind === "forum";
-      const cls = "nd" + (isForum ? " forum" : "") + (a.derived ? " hub" : "") + (a._group !== undefined ? " grp" : "") + (sel === a.node_id ? " sel" : "")
+      const cls = "nd" + (isForum ? " forum" : "") + (a.derived ? " hub" : "") + (this._found === a.node_id ? " found" : "") + (a._group !== undefined ? " grp" : "") + (sel === a.node_id ? " sel" : "")
         + (this._menu && this._menu.node_id === a.node_id ? " menu" : "") + (sel && !near.has(a.node_id) ? " dim" : "");
       const cv = judgement(a, sc.M.colour);
       const stCls = (isForum || a.derived) && cv === null ? ""
@@ -1496,6 +1512,27 @@ export class TfsPowerMap extends Base {
     this._menu = null;
     this._render();
   }
+  /** Show one actor: open the group they are in when the map is grouped, select them, and
+   * centre the view on them (Find on this map). */
+  focusActor(id) {
+    if (!id) return;
+    const all = this._actors();
+    const a = all.find((x) => x.node_id === id);
+    if (!a) return;
+    const grouped = this.layout === "network" && opensGrouped(all.length, this._showAll);
+    if (grouped) {
+      const by = this.getAttribute("group-by") || groupingOf(all);
+      const gs = groupsOf(a, by);
+      const key = gs.length ? gs[0] : "\u0000none";
+      if (this._group !== key) { this._group = key; this._userView = false; this._view = VIEWBOX.slice(); }
+    }
+    this._selected = id;
+    this._menu = null;
+    this._focusPending = id;
+    this._emit("tfs-actor-select", { node_id: id });
+    this._render();
+  }
+
   _unpin(id) {
     this._pins.delete(id);
     const n = this._force && this._force.pos.get(id);
@@ -1508,6 +1545,7 @@ export class TfsPowerMap extends Base {
     if (ic.type === "outside") return svg("svg", { width: 22, height: 22, "aria-hidden": "true" }, [svg("circle", { cx: 11, cy: 11, r: 8, fill: "none", stroke: "var(--ink-3)", "stroke-dasharray": "2 3" })]);
     if (ic.type === "fill") return svg("svg", { width: 22, height: 22, "aria-hidden": "true" }, [svg("circle", { class: ic.cls, cx: 11, cy: 11, r: 8 })]);
     if (ic.type === "rel") return svg("svg", { width: 22, height: 22, "aria-hidden": "true" }, [svg("circle", { class: "st0", cx: 11, cy: 11, r: 5.5 }), svg("circle", { class: `rg-${ic.rel}`, fill: "none", cx: 11, cy: 11, r: 9 })]);
+    if (ic.type === "hub") return svg("svg", { width: 22, height: 22, viewBox: "-11 -11 22 22", "aria-hidden": "true" }, [svg("path", { d: shapeD("organization", 8), fill: "var(--panel)", stroke: "var(--ink-3)", "stroke-dasharray": "3 2" })]);
     if (ic.type === "shape") return svg("svg", { width: 22, height: 22, viewBox: "-11 -11 22 22", "aria-hidden": "true" }, [svg("path", { class: "shp" + (ic.kind === "forum" ? " forum" : ""), d: shapeD(ic.kind, 8) })]);
     if (ic.type === "line") {
       const k = LINK_KINDS[ic.kind];

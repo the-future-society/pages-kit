@@ -102,6 +102,18 @@ export function dirtyFields(initial, current) {
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}/;
 
+/** "New …" in an `allow_new` dropdown (kit 1.9). */
+export const NEW_VALUE = "\u0000new";
+/** Options the server sends WITH a record because they depend on it (a power map's own groups):
+ * `rec.options[name]`, `rec.field_options[name]` or `rec.fields[i].options`. Null: use the form's. */
+export function recordOptions(rec, name) {
+  if (!rec || !name) return null;
+  if (rec.options && Array.isArray(rec.options[name])) return rec.options[name];
+  if (rec.field_options && Array.isArray(rec.field_options[name])) return rec.field_options[name];
+  if (Array.isArray(rec.fields)) { const f = rec.fields.find((x) => x && x.name === name); if (f && Array.isArray(f.options)) return f.options; }
+  return null;
+}
+
 /** What `get_record_for_editing` / a default / a preset holds, as `save_record` takes it. */
 export function wireOf(field, value) {
   const kind = field.kind;
@@ -2067,13 +2079,23 @@ export class TfsRecordForm extends Base {
       const cur = wireOf(f, start);
       const sel = h("select", { class: "tfs-input", id });
       sel.append(h("option", { value: "", text: "Not set" }));
-      for (const o of optionsWithCurrent(f.options, cur).filter((x) => !x.hidden || x.value === cur)) sel.append(h("option", { value: o.value, text: o.label }));
+      // Options that depend on THIS record (a map's own groups) come with the record (kit 1.9).
+      const opts = recordOptions(this.record, f.name) || f.options;
+      for (const o of optionsWithCurrent(opts, cur).filter((x) => !x.hidden || x.value === cur)) sel.append(h("option", { value: o.value, text: o.label }));
+      // `allow_new`: pick an existing value or type a new one — never free text by default.
+      let fresh = null;
+      if (f.allow_new) {
+        sel.append(h("option", { value: NEW_VALUE, text: f.new_label || `New ${String(f.label || "value").toLowerCase()}…` }));
+        fresh = h("input", { class: "tfs-input", type: "text", "aria-label": f.new_label || `New ${String(f.label || "value").toLowerCase()}`, placeholder: "Type the new name", hidden: true });
+        sel.addEventListener("change", () => { fresh.hidden = sel.value !== NEW_VALUE; if (!fresh.hidden) fresh.focus(); });
+      }
       sel.value = cur == null ? "" : cur;
       let touched = false;
       sel.addEventListener("change", () => { touched = true; });
       wrap.append(sel);
+      if (fresh) { fresh.addEventListener("input", () => { touched = true; }); wrap.append(fresh); }
       meta.ctrl = () => sel;
-      get = () => controlValue(touched, () => (sel.value === "" ? null : sel.value), cur);
+      get = () => controlValue(touched, () => (sel.value === "" ? null : sel.value === NEW_VALUE ? (fresh.value.trim() || null) : sel.value), cur);
     } else if (k === "checkbox") {
       const init = wireOf(f, start);
       const cb = h("input", { type: "checkbox", class: "tfs-check", id, "aria-labelledby": `${lid} ${id}-t` });
