@@ -6,6 +6,7 @@
   --paper:#F3F5F8;--panel:#FFFFFF;--ink:#18212F;--ink-2:#465266;--ink-3:#5E687B;--rule:#D9DEE6;--wash:#E8ECF2;
   --eu:#24479B;--intl:#22706C;--disc:#9A6400;--focus:#24479B;
   --pos2:#1E7A46;--pos1:#7FBF96;--neu:#C3CAD4;--neg1:#E5A193;--neg2:#A8322A;
+  --s1:#E6ECEA;--s2:#B9DCCB;--s3:#7FC2A3;--s4:#3E9C77;--s5:#1B6B4E;--snone:#D3D8DF;
   --warm:#1F8A70;--known:#8592A6;--none:#C0473C;
   --rec:#5E6B80;--res:#2457D6;--res-soft:#E3EAFB;--ill:#8E44AD;--ill-soft:#F1E6F6;
   --shadow:0 1px 2px rgba(24,33,47,.06),0 4px 14px rgba(24,33,47,.06);
@@ -23,6 +24,7 @@
   --paper:#10151D;--panel:#18202B;--ink:#E7ECF3;--ink-2:#AEB8C7;--ink-3:#8C97A8;--rule:#2A3443;--wash:#222C3A;
   --eu:#7E9BE6;--intl:#5FBFB9;--disc:#E3B04B;--focus:#7E9BE6;
   --pos2:#5CC28A;--pos1:#2F7A52;--neu:#4A5568;--neg1:#8C4A40;--neg2:#F08178;
+  --s1:#26332F;--s2:#2C5446;--s3:#367A5F;--s4:#4CA57F;--s5:#7FD3AB;--snone:#3A4555;
   --warm:#4CC2A8;--known:#7F8DA3;--none:#F08178;
   --rec:#9AA6B8;--res:#86A6FF;--res-soft:#1E2C4D;--ill:#C79BE0;--ill-soft:#2E2338;
   --shadow:0 1px 2px rgba(0,0,0,.3),0 4px 14px rgba(0,0,0,.25);
@@ -36,6 +38,7 @@
     --paper:#10151D;--panel:#18202B;--ink:#E7ECF3;--ink-2:#AEB8C7;--ink-3:#8C97A8;--rule:#2A3443;--wash:#222C3A;
     --eu:#7E9BE6;--intl:#5FBFB9;--disc:#E3B04B;--focus:#7E9BE6;
     --pos2:#5CC28A;--pos1:#2F7A52;--neu:#4A5568;--neg1:#8C4A40;--neg2:#F08178;
+  --s1:#26332F;--s2:#2C5446;--s3:#367A5F;--s4:#4CA57F;--s5:#7FD3AB;--snone:#3A4555;
     --warm:#4CC2A8;--known:#7F8DA3;--none:#F08178;
     --rec:#9AA6B8;--res:#86A6FF;--res-soft:#1E2C4D;--ill:#C79BE0;--ill-soft:#2E2338;
     --shadow:0 1px 2px rgba(0,0,0,.3),0 4px 14px rgba(0,0,0,.25);
@@ -170,6 +173,16 @@
 .viatag{display:inline-block;margin-top:2px;font-size:11px;font-weight:700;color:var(--warn);background:var(--warn-soft);border-radius:999px;padding:0 7px}
 @media (max-width:720px){.lt.dir{min-width:0}.lt.dir .hd,.lt.dir .rw{grid-template-columns:minmax(0,1fr) 84px}}
 .ed.flash{animation:flash 2.6s ease-out 1}
+/* the live drawing (kit 1.9): Samples-page country colours, CRM organisation hubs, counts */
+.sup1{fill:var(--s1)}.sup2{fill:var(--s2)}.sup3{fill:var(--s3)}.sup4{fill:var(--s4)}.sup5{fill:var(--s5)}.supnone{fill:var(--snone)}
+.gbox svg.net{cursor:grab;touch-action:none}
+.gbox svg.net:active{cursor:grabbing}
+.nd.hub .body{fill:var(--panel);stroke:var(--ink-3);stroke-dasharray:3 2}
+.nd.hub text{font-size:11.5px;font-weight:700;fill:var(--ink-2)}
+.nd.grp text{font-weight:800}
+.nd text .cnt{font-size:11px;font-weight:500;fill:var(--ink-2)}
+.ed.crm{stroke:var(--ink-3);stroke-opacity:.32}
+.ed.crm.dim{stroke-opacity:.06}
 @keyframes flash{0%,45%{stroke:var(--act);stroke-width:6;stroke-opacity:1}100%{}}
 .panel.ovis{overflow:visible}
 .arrowfill{fill:var(--rec)}

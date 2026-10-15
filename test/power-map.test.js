@@ -8,6 +8,7 @@ import {
   labelSet, nodeKeys, keyFilter, keyRows, linkLanes, linkPath, linkWidth, linkClass, linkId,
   isResearched, liveActors, drawableLinks, groupBubbles, groupingOf, bubbleLayout, opensGrouped,
   networkLayout, NET_BOX, partialText, LINK_KINDS, LINK_ORDER, DEFAULT_RING_LABELS, TfsPowerMap,
+  orgHubs, groupsOf, groupMembers, groupGraph, supportClass, settleForce, FORCE, D3_SRC, hasD3, loadD3,
 } from "../power-map.js";
 
 const actor = (id, o = {}) => ({ node_id: id, kind: "person", name: id.toUpperCase(), judgements: {}, ...o });
@@ -430,4 +431,98 @@ test("the rings view hugs the rings, keeps room for the Key in screen pixels, an
   assert.ok(wide[0] < noKey[0], "room for the Key is added on the left");
   // the grown rings use far more of a narrow panel than the old box (2082 units wide at f = 1.78)
   assert.ok(narrow[2] < 1700, String(narrow[2]));
+});
+
+
+/* ---------------------------------------------------------------- the live drawing (kit 1.8.3) */
+
+test("people who share a CRM organisation are joined to it; an organisation already on the map is used", () => {
+  const actors = [
+    actor("a", { primary_org_name: "Example Ministry" }), actor("b", { primary_org_name: "example ministry " }),
+    actor("c", { primary_org_name: "Lone Institute" }),
+    actor("d", { primary_org_name: "On The Map" }), { node_id: "o1", kind: "organization", name: "On The Map" },
+  ];
+  const { hubs, links } = orgHubs(actors, [{ from_node_id: "d", to_node_id: "o1", kind: "works_at" }]);
+  assert.deepEqual(hubs.map((h) => h.node_id), ["org:example ministry"], "a hub only where two or more share an organisation not on the map");
+  assert.ok(hubs[0].derived && hubs[0].kind === "organization");
+  assert.deepEqual(links.map((l) => `${l.from_node_id}>${l.to_node_id}`).sort(), ["a>org:example ministry", "b>org:example ministry"],
+    "no line for a lone organisation, none duplicating a recorded works-at link");
+  assert.ok(links.every((l) => l.derived && l.kind === "works_at"));
+  const own = orgHubs([actor("e", { primary_org_name: "On The Map" }), { node_id: "o1", kind: "organization", name: "On The Map" }], []);
+  assert.deepEqual(own.links.map((l) => l.to_node_id), ["o1"], "one person is still joined to their organisation when it is on the map");
+});
+
+test("someone who works on several countries opens under each; the grouping text is split on ;", () => {
+  assert.deepEqual(groupsOf(actor("p", { countries: ["Arcadia", "Borealis"] })), ["Arcadia", "Borealis"]);
+  assert.deepEqual(groupsOf(actor("q", { grouping: "EU; United Kingdom" })), ["EU", "United Kingdom"]);
+  assert.deepEqual(groupsOf({ node_id: "c", kind: "country", name: "Arcadia" }), ["Arcadia"]);
+  const g = groupMembers([actor("p", { countries: ["Arcadia", "Borealis"] }), actor("q", { countries: ["Arcadia"] }), actor("r")]);
+  const by = Object.fromEntries(g.map((x) => [x.label, x.ids.slice().sort()]));
+  assert.deepEqual(by, { Arcadia: ["p", "q"], Borealis: ["p"], "No country": ["r"] });
+  assert.equal(g[0].label, "Arcadia", "largest first");
+});
+
+test("the grouped view is the countries map: hexagons coloured from it, its forums and its links", () => {
+  const cm = { actors: [
+    { node_id: "ca", kind: "country", name: "Arcadia", judgements: { red_lines_support: { value: 4 } } },
+    { node_id: "cb", kind: "country", name: "Borealis", judgements: {} },
+    { node_id: "f1", kind: "forum", name: "Group of Seven" },
+    { node_id: "f2", kind: "forum", name: "Unjoined Forum" },
+  ], links: [
+    { from_node_id: "ca", to_node_id: "f1", kind: "member_of", source: "researched: public" },
+    { from_node_id: "cb", to_node_id: "f1", kind: "member_of", source: "researched: public" },
+  ] };
+  const groups = groupMembers([actor("p", { countries: ["Arcadia"] }), actor("q", { countries: ["Arcadia"] }), actor("r", { countries: ["Borealis"] }), actor("s")]);
+  const { actors, links } = groupGraph(groups, "country", { data: cm, colourMeasure: "red_lines_support" });
+  const arc = actors.find((a) => a.node_id === "grp:Arcadia");
+  assert.equal(arc.kind, "country");
+  assert.equal(arc._count, 2);
+  assert.equal(arc.judgements.red_lines_support.value, 4, "the colour comes from the countries map");
+  assert.equal(actors.find((a) => a.node_id === "grp:\u0000none").kind, "group", "people with no country are a plain group, not a country");
+  assert.ok(arc._r > actors.find((a) => a.node_id === "grp:Borealis")._r, "more people, a bigger hexagon");
+  assert.deepEqual(actors.filter((a) => a.kind === "forum").map((a) => a.node_id), ["f1"], "only forums a drawn country sits in");
+  assert.deepEqual(links.map((l) => `${l.from_node_id}>${l.to_node_id}`).sort(), ["grp:Arcadia>f1", "grp:Borealis>f1"]);
+  const plain = groupGraph(groups, "country", null);
+  assert.equal(plain.links.length, 0, "without the countries map: the hexagons alone");
+});
+
+test("the Samples page's green 1–5 support colours, and the Key's Not rated row", () => {
+  assert.equal(supportClass(5), "sup5");
+  assert.equal(supportClass(1.4), "sup1");
+  assert.equal(supportClass(9), "sup5");
+  assert.equal(supportClass(null), "supnone");
+  const rows = keyRows([
+    { node_id: "a", kind: "country", name: "A", judgements: { red_lines_support: { value: 5 } } },
+    { node_id: "b", kind: "country", name: "B", judgements: {} },
+  ], [], "network", { scale: "support", stanceMeasure: "red_lines_support" });
+  const colour = rows.find((s) => s.id === "colour").rows;
+  assert.deepEqual(colour.map((r) => [r.label, r.icon.cls]), [["Strong support", "sup5"], ["Not rated", "supnone"]]);
+});
+
+test("settleForce uses the Samples page's forces, easing the push past 40 actors", () => {
+  const calls = {};
+  const chain = (name) => { const o = new Proxy(function () {}, {
+    get: (t, k) => (k === "then" ? undefined : (...a) => { (calls[name + "." + String(k)] = calls[name + "." + String(k)] || []).push(a); return o; }),
+    apply: () => o,
+  }); return o; };
+  const sim = { force: (n, f) => { calls["force:" + n] = f; return sim; }, stop: () => sim, tick: () => { calls.ticks = (calls.ticks || 0) + 1; }, alpha: () => sim };
+  const fake = { forceSimulation: () => sim, forceLink: () => chain("link"), forceManyBody: () => chain("charge"),
+    forceCollide: () => chain("collide"), forceX: (x) => { calls.cx = x; return chain("x"); }, forceY: (y) => { calls.cy = y; return chain("y"); } };
+  const nodes = Array.from({ length: 90 }, (_, i) => ({ id: "n" + i, kind: i ? "person" : "forum", r: 10, x: 0, y: 0 }));
+  settleForce(fake, nodes, [{ from_node_id: "n1", to_node_id: "n2", kind: "member_of" }], { cx: 600, cy: 330 });
+  assert.equal(calls.ticks, FORCE.ticks);
+  assert.equal(calls.cx, 600);
+  const dist = calls["link.distance"][0][0], str = calls["link.strength"][0][0];
+  assert.equal(dist({ kind: "member_of" }), 85); assert.equal(dist({ kind: "advises" }), 135);
+  assert.equal(str({ kind: "works_at" }), 0.22); assert.equal(str({ kind: "trusts" }), 0.55);
+  const charge = calls["charge.strength"][0][0];
+  assert.ok(Math.abs(charge({ kind: "person" }) - (-520 * Math.sqrt(40 / 90))) < 1e-9);
+  assert.equal(calls["collide.radius"][0][0]({ r: 10 }), 44);
+  assert.deepEqual(calls["x.strength"][0], [0.08]); assert.deepEqual(calls["y.strength"][0], [0.13]);
+});
+
+test("d3 comes from cdnjs at an exact version, and the kit works without it", async () => {
+  assert.equal(D3_SRC, "https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js");
+  assert.equal(hasD3(), false);
+  assert.equal(await loadD3(null), null, "no document: no d3, no error");
 });

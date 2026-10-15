@@ -10,12 +10,22 @@
  * prototype's, made general: shapeD() is SHAPE scaled, the KIND table is copied, and the Rings
  * placement turns the prototype's hand-placed RING_AT into a rule (angle from stance, ring from role).
  *
+ * THE DRAWING (1.8.3) is the Samples page's own engine: a live d3 force simulation with that
+ * page's forces (settleForce), scroll / trackpad / pinch zoom around the pointer, drag that holds
+ * an actor while the others make room (double-click lets it go), and every actor named. d3 7.9.0
+ * comes from cdnjs (the page may load it; else the element does); without it the deterministic
+ * networkLayout() is drawn. A map over GROUP_THRESHOLD actors opens as its countries — hexagons
+ * coloured from the countries map the page passes as options.groupMap, joined to their forums —
+ * and a country opens its people. People sharing a CRM organisation are drawn joined to it
+ * (orgHubs; derived, writes nothing).
+ *
  * The element WRITES NOTHING. Every action is an event the page acts on:
  *   tfs-actor-select  {node_id|null}                      click / Esc / Clear / empty click
  *   tfs-actor-menu    {node_id, x, y}                     right-click, long-press, ContextMenu key
  *   tfs-actor-action  {action, node_id[, role]}           menu items: link | score | details | remove;
  *                                                         tray role pick: set-role (+ role code)
- *   tfs-actor-move    {node_id, x, y}                     a node dragged in Network (view only)
+ *   tfs-actor-move    {node_id, x, y}                     an actor dragged in Network (view only; never
+ *                                                         for a country of the grouped view or a CRM hub)
  *   tfs-map-action    {action: "rename-rings"}            the Key's "Rename rings" (editors)
  *
  * Record text reaches the DOM ONLY through textContent / setAttribute. Every pure helper the
@@ -92,6 +102,8 @@ export const TOP_POWER = 10;
 export const GROUP_THRESHOLD = 150;
 /** Network layout area: right of the Key, inside the viewBox (the prototype's own range). */
 export const NET_BOX = { x0: 280, x1: 915, y0: 50, y1: 600 };
+/** A crowded network (over 60 shapes) is drawn taller: 1170 × 900 instead of 1170 × 660. */
+export const TALL_H = 900;
 
 /* ---------------------------------------------------------------- small helpers */
 
@@ -126,8 +138,16 @@ export function stanceBucket(v) {
 export function colourBucket(v, scale = "stance") {
   const n = numeric(v);
   if (n === null) return null;
-  return scale === "five" ? stanceBucket(n - 3) : stanceBucket(n);
+  return scale === "five" || scale === "support" ? stanceBucket(n - 3) : stanceBucket(n);
 }
+
+/** The Samples page's green 1–5 fill for a "support" measure (red-lines support on the
+ * countries map): sup1 … sup5, supnone when unrated. */
+export function supportClass(v) {
+  const n = numeric(v);
+  return n === null ? "supnone" : "sup" + Math.max(1, Math.min(5, Math.round(n)));
+}
+export const SUPPORT_LABELS = { 5: "Strong support", 4: "Support", 3: "Mixed", 2: "Weak support", 1: "Little or none" };
 
 export function stanceClass(bucket) {
   const b = STANCE_BANDS.find((s) => s[0] === (bucket === null || bucket === undefined ? 0 : bucket));
@@ -602,6 +622,7 @@ export function nodeKeys(actor, layout = "network", { stanceMeasure = "stance", 
   const v = judgement(actor, stanceMeasure);
   const unkeyed = actor.kind === "forum" || actor.kind === "organization" || actor.kind === "country";
   if (!unkeyed || v !== null) keys.push("st:" + (colourBucket(v, scale) ?? 0));
+  else if (scale === "support" && actor.kind === "country") keys.push("st:none");
   if (layout === "rings") { const r = ringOf(actor.role); if (r) keys.push("ring:" + r); }
   const rel = relKey(actor);
   if (rel) keys.push("rel:" + rel);
@@ -633,9 +654,11 @@ export function keyRows(actors, links, layout = "network", { ringLabels = DEFAUL
   }
   sections.push({ id: "size", title: "Size", sub: null, rows: [] });
   const st = STANCE_BANDS.filter(([v]) => has.has("st:" + v)).map(([v, label, em, cls]) => {
-    const custom = colourLabels && colourLabels[String(scale === "five" ? v + 3 : v)];
+    const custom = colourLabels && colourLabels[String(scale === "five" || scale === "support" ? v + 3 : v)];
+    if (scale === "support") return { key: "st:" + v, label: custom || SUPPORT_LABELS[v + 3], em: `${v + 3} / 5`, icon: { type: "fill", cls: "sup" + (v + 3) } };
     return { key: "st:" + v, label: custom || label, em: scale === "five" ? String(v + 3) : em, icon: { type: "fill", cls } };
   });
+  if (scale === "support" && has.has("st:none")) st.push({ key: "st:none", label: "Not rated", icon: { type: "fill", cls: "supnone" } });
   if (st.length) sections.push({ id: "colour", title: "Colour", sub: null, rows: st });
   const rel = REL_ORDER.filter((r) => has.has("rel:" + r)).map((r) => ({ key: "rel:" + r, label: REL_LABELS[r], icon: { type: "rel", rel: r } }));
   if (rel.length) sections.push({ id: "rel", title: "Ring", sub: "· who at TFS knows them", rows: rel });
@@ -645,7 +668,8 @@ export function keyRows(actors, links, layout = "network", { ringLabels = DEFAUL
   const lines = LINK_ORDER.filter((k) => present.has(k)).map((k) => {
     const ofKind = links.filter((l) => l.kind === k);
     const res = ofKind.length > 0 && ofKind.every(isResearched);
-    return { key: "link:" + k, label: LINK_KINDS[k].label, em: res ? "· from public sources" : undefined, icon: { type: "line", kind: k, res } };
+    const crm = ofKind.length > 0 && ofKind.every((l) => l.derived);
+    return { key: "link:" + k, label: LINK_KINDS[k].label, em: res ? "· from public sources" : crm ? "· from the CRM" : undefined, icon: { type: "line", kind: k, res } };
   });
   if (lines.length) sections.push({ id: "lines", title: "Lines", sub: "· kind of link", rows: lines });
   return sections;
@@ -751,6 +775,164 @@ export function partialText(data, loading) {
     : { strong: `Showing ${shown} of ${total}`, rest: " actors." };
 }
 
+/* ---------------------------------------------------------------- the live force drawing (the Samples engine) */
+
+/** d3 7.9.0 from cdnjs — the exact build the Samples page draws with. The kit stays
+ * dependency-free: the element uses `globalThis.d3` when the page has it, loads this script
+ * itself when it does not, and falls back to the static networkLayout() until it arrives (and in
+ * Node, where tests run). */
+export const D3_SRC = "https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js";
+let d3Loading = null;
+export function hasD3() {
+  const d3 = globalThis.d3;
+  return !!(d3 && d3.forceSimulation && d3.forceLink && d3.forceManyBody && d3.forceCollide);
+}
+export function loadD3(doc = globalThis.document) {
+  if (hasD3()) return Promise.resolve(globalThis.d3);
+  if (d3Loading) return d3Loading;
+  if (!doc || typeof doc.createElement !== "function") return Promise.resolve(null);
+  d3Loading = new Promise((resolve) => {
+    const s = doc.createElement("script");
+    s.src = D3_SRC;
+    s.async = true;
+    s.onload = () => resolve(hasD3() ? globalThis.d3 : null);
+    s.onerror = () => { d3Loading = null; resolve(null); };
+    (doc.head || doc.documentElement).appendChild(s);
+  });
+  return d3Loading;
+}
+
+/** The Samples page's forces, verbatim (template.html drawGraph): links pull at 135 (85 for a
+ * membership), every actor pushes the others away (-520; a forum -200), shapes keep radius + 34
+ * clear of each other, and a gentle pull holds the cloud on the centre. */
+export const FORCE = {
+  linkDistance: (l) => (l.kind === "member_of" || l.kind === "works_at" ? 85 : 135),
+  linkStrength: (l) => (l.kind === "member_of" || l.kind === "works_at" ? 0.22 : 0.55),
+  charge: (d) => (d.kind === "forum" ? -200 : -520),
+  collidePad: 34, xStrength: 0.08, yStrength: 0.13, ticks: 400, dragAlpha: 0.25,
+};
+
+/** Builds and settles the Samples simulation on `nodes` ({id, kind, r, x, y[, fx, fy]}). Returns
+ * the stopped simulation; positions are on the node objects. */
+export function settleForce(d3, nodes, links, { cx, cy, ticks = FORCE.ticks } = {}) {
+  const ids = new Set(nodes.map((n) => n.id));
+  const simLinks = links.filter((l) => ids.has(l.from_node_id) && ids.has(l.to_node_id))
+    .map((l) => ({ source: l.from_node_id, target: l.to_node_id, kind: l.kind }));
+  // The Samples maps held 20–40 actors. A country with 90 people pushed apart at full strength
+  // spreads so wide its names become unreadable, so the push eases off past 40 actors.
+  const ease = nodes.length > 40 ? Math.sqrt(40 / nodes.length) : 1;
+  const sim = d3.forceSimulation(nodes)
+    .force("link", d3.forceLink(simLinks).id((d) => d.id).distance(FORCE.linkDistance).strength(FORCE.linkStrength))
+    .force("charge", d3.forceManyBody().strength((d) => FORCE.charge(d) * ease))
+    .force("collide", d3.forceCollide().radius((d) => d.r + FORCE.collidePad).strength(1))
+    .force("x", d3.forceX(cx).strength(FORCE.xStrength))
+    .force("y", d3.forceY(cy).strength(FORCE.yStrength))
+    .stop();
+  for (let i = 0; i < ticks; i++) sim.tick();
+  sim.alpha(0);
+  return sim;
+}
+
+/** People who share a CRM organisation, drawn joined to it. The International team's
+ * stakeholders carry no links between themselves, so without this a country's people were a
+ * cloud of unconnected dots; with it each organisation pulls its people together, as the
+ * Samples page's deep-dives did. An organisation that is itself on the map is used; otherwise
+ * one hub per organisation shared by two or more people is added. Hubs and their lines are
+ * drawn from the CRM, write nothing, and carry `derived: true`. */
+export function orgHubs(actors, links) {
+  const byName = new Map();
+  for (const a of actors) {
+    if (a.kind === "organization" && a.name) byName.set(String(a.name).trim().toLowerCase(), a.node_id);
+  }
+  const has = new Set(links.filter((l) => l.kind === "works_at").map((l) => `${l.from_node_id}>${l.to_node_id}`));
+  const groups = new Map();
+  for (const a of actors) {
+    if (a.kind !== "person" || !a.primary_org_name) continue;
+    const name = String(a.primary_org_name).trim();
+    if (!name) continue;
+    const k = name.toLowerCase();
+    if (!groups.has(k)) groups.set(k, { name, ids: [] });
+    groups.get(k).ids.push(a.node_id);
+  }
+  const hubs = [], out = [];
+  for (const [k, g] of groups) {
+    let to = byName.get(k);
+    if (!to) {
+      if (g.ids.length < 2) continue;
+      to = "org:" + k;
+      hubs.push({ node_id: to, kind: "organization", name: g.name, derived: true, _r: 9 + Math.min(9, g.ids.length) });
+    }
+    for (const id of g.ids) {
+      if (has.has(`${id}>${to}`)) continue;
+      out.push({ from_node_id: id, to_node_id: to, kind: "works_at", derived: true, source: "CRM" });
+    }
+  }
+  return { hubs, links: out };
+}
+
+/** Every group an actor belongs to: each of its countries (someone who works on three
+ * countries is in all three), a country actor in its own, else the map's grouping text split
+ * on ";" ("EU; United Kingdom"), else "No country" / "No group". */
+export function groupsOf(a, by = "country") {
+  const split = (s) => String(s).split(";").map((x) => x.trim()).filter(Boolean);
+  if (by === "country") {
+    if (Array.isArray(a.countries) && a.countries.length) return a.countries.map(String);
+    if (a.kind === "country" && a.name) return [String(a.name)];
+    if (a.grouping) return split(a.grouping);
+    return [];
+  }
+  return a.grouping ? split(a.grouping) : [];
+}
+
+/** Groups with every member, largest first. Counts overlap: a person in two countries counts in
+ * both, because opening either country must show them. */
+export function groupMembers(actors, by = "country") {
+  const m = new Map();
+  for (const a of actors) {
+    const labels = groupsOf(a, by);
+    const keys = labels.length ? labels : [null];
+    for (const label of keys) {
+      const key = label === null ? "\u0000none" : label;
+      if (!m.has(key)) m.set(key, { key, label: label === null ? (by === "country" ? "No country" : "No group") : label, count: 0, ids: [] });
+      const g = m.get(key);
+      if (!g.ids.includes(a.node_id)) { g.ids.push(a.node_id); g.count++; }
+    }
+  }
+  return [...m.values()].sort((p, q) => q.count - p.count || (p.key === "\u0000none") - (q.key === "\u0000none") || p.label.localeCompare(q.label));
+}
+
+/** The grouped view as a map of its own: one node per group — a hexagon per country, coloured
+ * from the countries map when the page passes it (`groupMap`: that map's data and colour
+ * measure) — plus the forums those countries sit in and the countries map's links between them
+ * (the Samples page's Red lines coalition drawing). Node ids are "grp:<key>" for groups; forums
+ * keep their own ids. Each group node carries `_count` (its people) and `_r` (its size). */
+export function groupGraph(groups, by = "country", groupMap = null) {
+  const gmActors = groupMap && groupMap.data ? liveActors(groupMap.data) : [];
+  const countryByName = new Map(gmActors.filter((a) => a.kind === "country" && a.name).map((a) => [String(a.name).trim().toLowerCase(), a]));
+  const max = Math.max(1, ...groups.map((g) => g.count));
+  const actors = [], idOf = new Map();
+  for (const g of groups) {
+    const src = g.key === "\u0000none" ? null : countryByName.get(g.label.trim().toLowerCase()) || null;
+    const id = "grp:" + g.key;
+    if (src) idOf.set(src.node_id, id);
+    actors.push({ node_id: id, kind: by === "country" && g.key !== "\u0000none" ? "country" : "group", name: g.label,
+      judgements: src ? src.judgements || {} : {}, _group: g.key, _count: g.count, _r: Math.round(12 + 22 * Math.sqrt(g.count / max)) });
+  }
+  const links = [];
+  if (gmActors.length) {
+    const gmLinks = drawableLinks(groupMap.data, new Set(gmActors.map((a) => a.node_id)));
+    const forumIds = new Set();
+    for (const l of gmLinks) {
+      const a = idOf.get(l.from_node_id) || null, b = idOf.get(l.to_node_id) || null;
+      if (a && b) { links.push({ ...l, from_node_id: a, to_node_id: b }); continue; }
+      const fa = gmActors.find((x) => x.node_id === l.to_node_id && x.kind === "forum");
+      if (a && fa) { forumIds.add(fa.node_id); links.push({ ...l, from_node_id: a, to_node_id: fa.node_id }); }
+    }
+    for (const f of gmActors) if (forumIds.has(f.node_id)) actors.push({ ...f, _r: 10 + Math.min(8, links.filter((l) => l.to_node_id === f.node_id).length * 0.35) });
+  }
+  return { actors, links };
+}
+
 /* ---------------------------------------------------------------- the element */
 
 let uid = 0;
@@ -807,7 +989,9 @@ export class TfsPowerMap extends Base {
     this._keyOpen = null;            // null = decide at first render (closed on a phone)
     this._menu = null;               // {node_id}
     this._layoutCache = new Map();
-    this._dragPos = new Map();
+    this._force = null;              // {key, pos: Map id → live node, sim} — the settled drawing
+    this._pins = new Map();          // actors the viewer dragged stay where they were put
+    this._forceCache = new Map();    // earlier drawings by key, so going back keeps their shape
     this._view = VIEWBOX.slice();
     this._group = null;              // the group opened from the grouped view
     this._showAll = false;           // "Show every actor" on a large map
@@ -858,8 +1042,10 @@ export class TfsPowerMap extends Base {
       this._ro.observe(this);
     }
     this._render();
+    if (!hasD3()) loadD3().then((d) => { if (d && this.isConnected) { this._force = null; this._forceCache.clear(); this._render(); } });
   }
   disconnectedCallback() {
+    if (this._force && this._force.sim) this._force.sim.stop();
     if (this._ro) { this._ro.disconnect(); this._ro = null; }
     globalThis.document.removeEventListener("keydown", this._onDocKey);
     globalThis.document.removeEventListener("pointerdown", this._onDocDown, true);
@@ -893,6 +1079,7 @@ export class TfsPowerMap extends Base {
   }
   _setKeyOpen(open) {
     this._keyOpen = open;
+    this._keyUser = true;              // the viewer chose: never decided for them again
     const root = (this.closest && this.closest(".pm")) || this;
     if (root.classList) root.classList.toggle("keyopen", !!open);
     this._render();
@@ -902,35 +1089,90 @@ export class TfsPowerMap extends Base {
   _scene() {
     const all = this._actors();
     const layout = this.layout;
-    const M = this._measures();
-    let actors = all, mode = layout, groups = null, groupLabel = null;
+    let M = this._measures();
+    let actors = all, mode = layout, groups = null, groupLabel = null, links;
+    const by = this.getAttribute("group-by") || groupingOf(all);
     if (layout === "network" && this._group === null && opensGrouped(all.length, this._showAll)) {
       mode = "bubbles";
-      groups = groupBubbles(all, this.getAttribute("group-by") || groupingOf(all));
-    } else if (layout === "network" && this._group !== null) {
-      const g = groupBubbles(all, this.getAttribute("group-by") || groupingOf(all)).find((x) => x.key === this._group);
-      if (g) { const ids = new Set(g.ids); actors = all.filter((a) => ids.has(a.node_id)); groupLabel = g.label; }
-      else this._group = null;
+      groups = groupMembers(all, by);
+      const gm = this.options.groupMap || null;
+      const g = groupGraph(groups, by, gm);
+      actors = g.actors; links = g.links;
+      M = { size: "_none", colour: (gm && gm.colourMeasure) || "_none", scale: (gm && gm.colourScale) || "five", colourLabels: (gm && gm.colourLabels) || null };
+    } else {
+      if (layout === "network" && this._group !== null) {
+        const g = groupMembers(all, by).find((x) => x.key === this._group);
+        if (g) { const ids = new Set(g.ids); actors = all.filter((a) => ids.has(a.node_id)); groupLabel = g.label; }
+        else this._group = null;
+      }
+      links = drawableLinks(this._data, new Set(actors.map((a) => a.node_id)));
+      if (layout === "network") {
+        const h = orgHubs(actors, links);
+        if (h.hubs.length || h.links.length) { actors = actors.concat(h.hubs); links = links.concat(h.links); }
+      }
     }
     const ids = new Set(actors.map((a) => a.node_id));
-    const links = drawableLinks(this._data, ids);
     let pos = new Map(), unplaced = [], ringF = 1;
     if (mode === "rings") {
       const p = ringPlacement(actors, { stanceMeasure: M.colour, powerMeasure: M.size, scale: M.scale });
       pos = p.placed; unplaced = p.unplaced; ringF = p.scale;
-    } else if (mode === "network") {
-      const key = [...ids].sort().join(",") + "|" + links.length;
-      if (!this._layoutCache.has(key)) {
-        const laid = networkLayout(actors, links, { radius: (a) => nodeRadius(judgement(a, M.size)) });
-        this._layoutCache.set(key, laid);
-        // A new layout is always fitted to the panel: a small map otherwise sat in a corner.
-        this._fitNext = true;
-      }
-      pos = new Map(this._layoutCache.get(key));
-      for (const [id, p] of this._dragPos) if (pos.has(id)) pos.set(id, p);
+    } else {
+      pos = this._forcePos(mode + "|" + [...ids].sort().join(",") + "|" + links.length, actors, links, M);
     }
     const byId = new Map(actors.map((a) => [a.node_id, a]));
     return { all, actors, byId, links, pos, unplaced, mode, groups, groupLabel, M, ringF };
+  }
+
+  _radius(a, M) {
+    if (a && Number.isFinite(a._r)) return a._r;
+    return nodeRadius(judgement(a, (M || (this._sc && this._sc.M) || this._measures()).size));
+  }
+
+  /** The network's positions: the Samples page's live force simulation when d3 is there (seeded
+   * from the deterministic layout, or from where each actor already was), else the static layout.
+   * The same set of actors keeps its simulation across re-renders, so selecting, filtering or
+   * opening the Key never moves anyone. */
+  _forcePos(key, actors, links, M) {
+    if (this._force && this._force.key === key) return this._force.pos;
+    if (this._force && this._force.sim) this._force.sim.stop();
+    // going back to a drawing seen before (the countries after one country) finds it as it was left
+    const back = this._forceCache.get(key);
+    if (back && back.d3 === hasD3()) { this._force = back; this._fitNext = true; return back.pos; }
+    const prev = this._force ? this._force.pos : null;
+    const rOf = (a) => this._radius(a, M);
+    const seed = networkLayout(actors, links, { radius: rOf, labels: true });
+    const nodes = actors.map((a) => {
+      const old = prev && prev.get(a.node_id), s0 = seed.get(a.node_id) || { x: 600, y: 330 };
+      const pin = this._pins.get(a.node_id);
+      const n = { id: a.node_id, kind: a.kind, r: rOf(a), x: (pin || old || s0).x, y: (pin || old || s0).y };
+      if (pin) { n.fx = pin.x; n.fy = pin.y; }
+      return n;
+    });
+    const pos = new Map(nodes.map((n) => [n.id, n]));
+    let sim = null;
+    if (hasD3() && nodes.length) {
+      const cx = (NET_BOX.x0 + NET_BOX.x1) / 2, cy = (NET_BOX.y0 + NET_BOX.y1) / 2;
+      // where most actors already have a place, only settle the newcomers in gently
+      const known = prev ? nodes.filter((n) => prev.has(n.id)).length : 0;
+      sim = settleForce(globalThis.d3, nodes, links, { cx, cy, ticks: known > nodes.length / 2 ? 120 : FORCE.ticks });
+      sim.on("tick", () => this._tick());
+    }
+    this._force = { key, pos, sim, d3: hasD3() };
+    this._forceCache.set(key, this._force);
+    if (this._forceCache.size > 12) this._forceCache.delete(this._forceCache.keys().next().value);
+    if (!prev || !prev.size || [...pos.keys()].filter((id) => !prev.has(id)).length > pos.size / 2) this._fitNext = true;
+    return pos;
+  }
+
+  /** One simulation step on screen: move every shape and redraw every line, in place. */
+  _tick() {
+    const sc = this._sc;
+    if (!sc || !this._nodeEls) return;
+    for (const [id, g] of this._nodeEls) {
+      const p = sc.pos.get(id);
+      if (p) g.setAttribute("transform", `translate(${fmt(p.x)},${fmt(p.y)})`);
+    }
+    for (const { l, i, p, lanes } of this._linkEls || []) p.setAttribute("d", this._linkD(sc, l, i, lanes));
   }
 
   /* ---- render */
@@ -957,6 +1199,18 @@ export class TfsPowerMap extends Base {
       if (!was || this._view.every((v, i) => Math.abs(v - was[i]) < 0.5) || this._view.every((v, i) => Math.abs(v - VIEWBOX[i]) < 0.5)) this._view = auto;
       this._ringAuto = auto;
     }
+    // A crowded drawing (over 60 shapes) is taller, and opens with its Key closed so the names
+    // get the panel's full width — unless the viewer has opened or closed the Key themselves.
+    const crowded = sc.mode !== "rings" && sc.pos.size > 60;
+    if (this._fitNext && !this._keyUser && sc.mode !== "rings") {
+      const want = !crowded && !phoneNow() && (this.clientWidth || 1000) >= 760;
+      if (want !== !!this._keyOpen) {
+        this._keyOpen = want;
+        const root = (this.closest && this.closest(".pm")) || this;
+        if (root.classList) root.classList.toggle("keyopen", want);
+      }
+    }
+    this._crowded = crowded;
     if (this._fitNext) { this._fitNext = false; this._view = this._fitView(sc) || this._view; }
     const linkVisible = new Set();
     const editable = this.editable;
@@ -976,7 +1230,8 @@ export class TfsPowerMap extends Base {
         if (l.to_node_id === sel) near.add(l.from_node_id);
       }
     }
-    const labels = labelSet(visible.map((a) => a.node_id), visibleLinks, sel, (id) => judgement(this._actorByIdIn(sc.actors, id), sc.M.size));
+    // Everyone is named, as on the Samples page: zoom in to read a crowded map.
+    const labels = labelSet(visible.map((a) => a.node_id), visibleLinks, sel, (id) => judgement(this._actorByIdIn(sc.actors, id), sc.M.size), { limit: Infinity });
     this._labels = labels;
 
     const section = el("section", { class: "panel ovis", "aria-label": layout === "rings" ? "Rings" : "Network" });
@@ -990,9 +1245,10 @@ export class TfsPowerMap extends Base {
     }
     if (sc.mode === "bubbles") {
       const n = sc.all.length, gc = sc.groups.length, by = this.getAttribute("group-by") || groupingOf(sc.all);
+      const word = by === "country" ? (gc === 1 ? "country" : "countries") : (gc === 1 ? "group" : "groups");
       section.appendChild(el("div", { class: "banner info" }, [
-        el("span", { class: "grow" }, [el("b", { text: `${n} actors in ${gc} ${gc === 1 ? "group" : "groups"}` }),
-          ` · grouped by ${by === "country" ? "country" : "group"} · click a group to open it`]),
+        el("span", { class: "grow" }, [el("b", { text: `${n} actors in ${gc} ${word}` }),
+          ` · click a ${by === "country" ? "country" : "group"} to open its people · drag to rearrange · scroll to zoom`]),
         el("button", { type: "button", class: "quietbtn", text: "Show every actor", onclick: () => { this._showAll = true; this._render(); } }),
       ]));
     } else if (sc.groupLabel !== null) {
@@ -1011,6 +1267,7 @@ export class TfsPowerMap extends Base {
     const svgEl = svg("svg", {
       class: "net" + (layout === "rings" ? " rings" : "") + (sel ? " hassel" : ""),
       viewBox: this._view.map(fmt).join(" "), role: "img",
+      style: crowded && !phoneNow() ? `aspect-ratio:${VIEWBOX[2]}/${TALL_H}` : null,
       "aria-label": sc.mode === "bubbles" ? "Actors grouped, one bubble per group"
         : layout === "rings" ? "Rings: the actors on this map by their role and stance" : "Network of the actors on this map and the links between them",
     });
@@ -1019,18 +1276,14 @@ export class TfsPowerMap extends Base {
     svgEl.appendChild(svg("defs", {}, [svg("marker", { id: arrowId, viewBox: "0 0 10 10", refX: 9, refY: 5, markerWidth: 6.5, markerHeight: 6.5, orient: "auto-start-reverse" },
       [svg("path", { class: "arrowfill", d: "M0,0 L10,5 L0,10 z" })])]));
 
-    if (sc.mode === "bubbles") {
-      svgEl.appendChild(this._bubbles(sc));
-    } else {
-      if (layout === "rings") svgEl.appendChild(this._ringsBg());
-      svgEl.appendChild(this._links(sc, linkVisible, sel, arrowId));
-      if (layout === "rings") svgEl.appendChild(this._goal());
-      svgEl.appendChild(this._nodes(sc, visible, sel, near, labels));
-    }
+    if (layout === "rings") svgEl.appendChild(this._ringsBg());
+    svgEl.appendChild(this._links(sc, linkVisible, sel, arrowId));
+    if (layout === "rings") svgEl.appendChild(this._goal());
+    svgEl.appendChild(this._nodes(sc, visible, sel, near, labels));
     this._wirePointer(svgEl);
     gbox.appendChild(svgEl);
 
-    if (sc.mode !== "bubbles" && this._keyOpen) gbox.appendChild(this._key(sc, nodesOnMap, labels));
+    if (this._keyOpen) gbox.appendChild(this._key(sc, nodesOnMap, labels));
     if (this._menu && sc.pos.has(this._menu.node_id)) gbox.appendChild(this._menuEl(this._menu.node_id, editable));
     else this._menu = null;
     if (sel) {
@@ -1094,13 +1347,13 @@ export class TfsPowerMap extends Base {
     const layout = this.layout;
     const title = this.getAttribute("heading") || (layout === "rings" ? "Power holders and influencers" : "Who influences whom");
     const tools = el("div", { class: "tools" });
-    if (sc.mode !== "bubbles") {
-      tools.appendChild(el("button", { type: "button", class: "ibtn", "aria-pressed": String(!!this._keyOpen), text: "Key", onclick: () => this._setKeyOpen(!this._keyOpen) }));
-    }
+    tools.appendChild(el("button", { type: "button", class: "ibtn", "aria-pressed": String(!!this._keyOpen), text: "Key", onclick: () => this._setKeyOpen(!this._keyOpen) }));
     tools.appendChild(el("button", { type: "button", class: "ibtn", "aria-label": "Zoom out", text: "−", onclick: () => this._zoom(1.25) }));
     tools.appendChild(el("button", { type: "button", class: "ibtn", "aria-label": "Zoom in", text: "+", onclick: () => this._zoom(0.8) }));
     tools.appendChild(el("button", { type: "button", class: "ibtn", text: "Fit", onclick: () => this._fit() }));
-    const hint = sc.mode === "bubbles" ? "Click a group to open it" : "Click someone for details · right-click for actions";
+    const hint = sc.mode === "bubbles" ? "Click a country to open its people · scroll to zoom"
+      : layout === "rings" ? "Click someone for details · right-click for actions · scroll to zoom"
+      : "Click someone for details · drag to move · right-click for actions · scroll to zoom";
     return el("div", { class: "phead" }, [el("h2", { text: title }), el("span", { class: "quiet hint", text: hint }), tools]);
   }
 
@@ -1133,7 +1386,7 @@ export class TfsPowerMap extends Base {
 
   _geom(sc, id) {
     const a = this._actorByIdIn(sc.actors, id);
-    const r = nodeRadius(judgement(a, sc.M.size));
+    const r = this._radius(a, sc.M);
     return { a, r, outline: !!relKey(a), p: sc.pos.get(id) };
   }
 
@@ -1153,11 +1406,11 @@ export class TfsPowerMap extends Base {
       const k = LINK_KINDS[l.kind];
       const dim = sel && l.from_node_id !== sel && l.to_node_id !== sel;
       const p = svg("path", {
-        class: linkClass(l) + (dim ? " dim" : ""), d: this._linkD(sc, l, i, lanes),
+        class: linkClass(l) + (l.derived ? " crm" : "") + (dim ? " dim" : ""), d: this._linkD(sc, l, i, lanes),
         "stroke-width": linkWidth(l), "stroke-dasharray": k.dash || null,
         "stroke-linecap": l.kind === "communicates" ? "round" : null,
         "marker-end": k.arrow ? `url(#${arrowId})` : null,
-      }, [svg("title", { text: linkTitle(l, nameOf) })]);
+      }, [svg("title", { text: linkTitle(l, nameOf) + (l.derived ? " (from the CRM)" : "") })]);
       this._linkEls.push({ l, i, p, lanes });
       g.appendChild(p);
     });
@@ -1168,17 +1421,20 @@ export class TfsPowerMap extends Base {
     const g = svg("g", { "data-layer": "nodes" });
     this._nodeEls = new Map();
     // smaller on top: draw largest first so a small actor is never hidden under a large one
-    const order = visible.slice().sort((p, q) => nodeRadius(judgement(q, sc.M.size)) - nodeRadius(judgement(p, sc.M.size)));
+    const order = visible.slice().sort((p, q) => this._radius(q, sc.M) - this._radius(p, sc.M));
     for (const a of order) {
       const { r, p } = this._geom(sc, a.node_id);
       const rel = relKey(a);
       const isForum = a.kind === "forum";
-      const cls = "nd" + (isForum ? " forum" : "") + (sel === a.node_id ? " sel" : "")
+      const cls = "nd" + (isForum ? " forum" : "") + (a.derived ? " hub" : "") + (a._group !== undefined ? " grp" : "") + (sel === a.node_id ? " sel" : "")
         + (this._menu && this._menu.node_id === a.node_id ? " menu" : "") + (sel && !near.has(a.node_id) ? " dim" : "");
-      const stCls = isForum && judgement(a, sc.M.colour) === null ? "" : " " + stanceClass(colourBucket(judgement(a, sc.M.colour), sc.M.scale));
+      const cv = judgement(a, sc.M.colour);
+      const stCls = (isForum || a.derived) && cv === null ? ""
+        : sc.M.scale === "support" || (a._group !== undefined && cv === null) ? " " + supportClass(cv)
+        : " " + stanceClass(colourBucket(cv, sc.M.scale));
       const node = svg("g", {
         class: cls, transform: `translate(${fmt(p.x)},${fmt(p.y)})`, tabindex: 0, role: "button",
-        "aria-label": `${a.name}, ${KIND_WORD[a.kind] || "actor"}`, "data-node": a.node_id,
+        "aria-label": a._group !== undefined ? `${a.name}, ${a._count} ${a._count === 1 ? "person" : "people"} — open` : `${a.name}, ${KIND_WORD[a.kind] || "actor"}`, "data-node": a.node_id,
         style: this.layout === "network" && !phoneNow() ? "touch-action:none" : null,
       });
       if (rel) node.appendChild(svg("circle", { class: `ring rg-${rel}`, r: fmt(r + 4) }));
@@ -1187,18 +1443,22 @@ export class TfsPowerMap extends Base {
       if (labels.named.has(a.node_id)) {
         const lines = wrapLabel(a.name, 22, 2);
         const t = svg("text", { y: fmt(r + 17) });
-        if (lines.length === 1) t.textContent = lines[0];
+        if (lines.length === 1 && a._count === undefined) t.textContent = lines[0];
         else lines.forEach((l, i) => t.appendChild(svg("tspan", { x: 0, dy: i ? 14 : 0, text: l })));
+        if (a._count !== undefined) t.appendChild(svg("tspan", { x: 0, dy: 14, class: "cnt", text: `${a._count} ${a._count === 1 ? "person" : "people"}` }));
         node.appendChild(t);
+        if (a._count !== undefined || a.derived) node.appendChild(svg("title", { text: a._count !== undefined ? `${a.name}: ${a._count} on this map — click to open` : `${a.name} — from the CRM: the people here work there` }));
       } else {
         node.appendChild(svg("title", { text: a.name }));
       }
+      node.addEventListener("dblclick", (e) => { e.preventDefault(); this._unpin(a.node_id); });
       node.addEventListener("keydown", (e) => {
-        if (e.key === "Enter" || e.key === " ") { e.preventDefault(); this._select(a.node_id); this._focusNode = a.node_id; }
+        if (e.key === "Enter" || e.key === " ") { e.preventDefault(); this._activate(a.node_id); this._focusNode = a.node_id; }
         else if (e.key === "ContextMenu" || (e.shiftKey && e.key === "F10")) { e.preventDefault(); this._openMenu(a.node_id, null); }
       });
       node.addEventListener("contextmenu", (e) => {
         e.preventDefault(); e.stopPropagation();
+        if (!this._isReal(a.node_id)) return;
         clearTimeout(this._lpTimer);
         if (this._ptr) { if (this._ptr.long) return; this._ptr.long = true; }
         this._openMenu(a.node_id, e);
@@ -1209,29 +1469,34 @@ export class TfsPowerMap extends Base {
     return g;
   }
 
-  _bubbles(sc) {
-    const g = svg("g", { "data-layer": "bubbles" });
-    const laid = bubbleLayout(sc.groups, { cap: this._allGroups ? Infinity : 12 });
-    for (const b of laid) {
-      const lines = b.more ? [`${b.label}`, "groups", `${b.count} actors`] : [wrapLabel(b.label, 16, 1)[0], `${b.count} ${b.count === 1 ? "actor" : "actors"}`];
-      const node = svg("g", { class: "nd", role: "button", tabindex: 0, "data-group": b.key,
-        "aria-label": b.more ? `${b.label} groups, ${b.count} actors — show them` : `${b.label}, ${b.count} ${b.count === 1 ? "actor" : "actors"} — open this group` });
-      node.appendChild(b.more
-        ? svg("circle", { cx: b.x, cy: b.y, r: b.r, style: "fill:var(--wash);stroke:var(--ink-3);stroke-dasharray:4 3" })
-        : svg("circle", { cx: b.x, cy: b.y, r: b.r, class: "st0", style: "fill-opacity:.55;stroke:var(--ink-3)" }));
-      const y0 = b.y - (lines.length - 1) * 8 + 4;
-      lines.forEach((l, i) => node.appendChild(svg("text", { x: b.x, y: y0 + i * 16, "text-anchor": "middle",
-        style: i === 0 ? "font-size:13px;font-weight:800;fill:var(--ink);stroke:none" : "font-size:12px;font-weight:400;fill:var(--ink-2);stroke:none", text: l })));
-      node.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); this._openGroup(b); } });
-      g.appendChild(node);
-    }
-    return g;
-  }
-  _openGroup(b) {
-    if (b.more) { this._allGroups = true; this._render(); return; }
-    this._group = b.key;
+  _openGroup(key) {
+    this._group = key;
+    this._selected = null;
+    this._menu = null;
     this._view = VIEWBOX.slice();
     this._render();
+  }
+  /** An actor on the page's own map (not a country of the grouped view or an organisation hub
+   * drawn from the CRM): only these open details or a menu. */
+  _isReal(id) {
+    const a = this._sc && this._sc.byId.get(id);
+    return !!a && a._group === undefined && !a.derived && this._actorById(id) !== null;
+  }
+  /** A click or Enter on a shape: a country opens its people; a hub or forum of the grouped view
+   * highlights what it joins; anyone else is selected for the details panel. */
+  _activate(id) {
+    const a = this._sc && this._sc.byId.get(id);
+    if (a && a._group !== undefined) { this._openGroup(a._group); return; }
+    if (this._isReal(id)) { this._select(id); return; }
+    this._selected = this._selected === id ? null : id;
+    this._menu = null;
+    this._render();
+  }
+  _unpin(id) {
+    this._pins.delete(id);
+    const n = this._force && this._force.pos.get(id);
+    if (n) { n.fx = null; n.fy = null; }
+    if (this._force && this._force.sim) this._force.sim.alpha(0.3).restart();
   }
 
   _keyIcon(ic) {
@@ -1255,13 +1520,16 @@ export class TfsPowerMap extends Base {
     const M = sc.M;
     const sections = keyRows(nodesOnMap, sc.links, this.layout, { ringLabels: this._ringLabels(), scale: M.scale, stanceMeasure: M.colour, colourLabels: M.colourLabels });
     const anyOff = Object.values(this._off).some(Boolean);
+    const gm = sc.mode === "bubbles" ? (this.options.groupMap || {}) : null;
+    const o = gm ? { sizeLabel: "people on this map", colourLabel: gm.colourLabel || "the countries map's score" } : this.options;
+    if (M.size === "none" || (M.size === "_none" && !gm)) { const i = sections.findIndex((x) => x.id === "size"); if (i >= 0) sections.splice(i, 1); }
+    if (gm && M.colour === "_none") { const i = sections.findIndex((x) => x.id === "colour"); if (i >= 0) sections.splice(i, 1); }
     const key = el("div", { class: "key", role: "group", "aria-label": "Key" });
     key.appendChild(el("div", { class: "khead" }, [el("b", { text: "Key" }), el("span", { style: "display:flex;gap:6px;align-items:center" }, [
       anyOff ? el("button", { type: "button", class: "kreset", text: "Show all", onclick: () => { this._off = {}; this._focusKey = "\u0000"; this._render(); } }) : null,
       el("button", { type: "button", class: "xbtn", style: "width:28px;height:28px", "aria-label": "Hide the key", onclick: () => this._setKeyOpen(false) }, [icon(ICON.x, 14, 2.4)]),
     ])]));
     key.appendChild(el("div", { class: "khint" }, [icon(ICON.eye, 14, 2), "Click any row below to hide or show it on the map."]));
-    const o = this.options;
     for (const s of sections) {
       const sec = el("div", { class: "ksec" });
       let title = s.title, sub = s.sub;
@@ -1285,16 +1553,15 @@ export class TfsPowerMap extends Base {
           this.editable ? el("button", { type: "button", class: "linkbtn", style: "font-size:11.5px", text: "Rename rings", onclick: () => this._emit("tfs-map-action", { action: "rename-rings" }) }) : null]));
       }
       if (s.id === "lines") {
-        sec.appendChild(el("div", { class: "quiet", style: "font-size:11.5px;margin-top:4px", text: labels.all
-          ? "Thicker means a stronger link. Every actor is named."
-          : `Thicker means a stronger link. With more than ${LABEL_LIMIT} actors showing, only the selected actor, its neighbours and the ${TOP_POWER} most powerful are named.` }));
+        const crm = sc.links.some((l) => l.derived);
+        sec.appendChild(el("div", { class: "quiet", style: "font-size:11.5px;margin-top:4px", text: "Thicker means a stronger link."
+          + (crm ? " A faint grey line joins someone to their organisation, from the CRM." : "") }));
       }
       key.appendChild(sec);
     }
-    if (!sections.some((s) => s.id === "lines")) {
-      key.appendChild(el("div", { class: "quiet", style: "font-size:11.5px", text: labels.all ? "Every actor is named."
-        : `With more than ${LABEL_LIMIT} actors showing, only the selected actor, its neighbours and the ${TOP_POWER} most powerful are named.` }));
-    }
+    key.appendChild(el("div", { class: "quiet", style: "font-size:11.5px;margin-top:6px", text: sc.mode === "rings"
+      ? "Scroll or pinch to zoom; drag empty space to move around."
+      : "Scroll or pinch to zoom; drag empty space to move around. Drag anyone and the others make room; double-click to let them go again." }));
     return key;
   }
 
@@ -1380,14 +1647,19 @@ export class TfsPowerMap extends Base {
     const pt = new DOMPoint(e.clientX, e.clientY).matrixTransform(m.inverse());
     return { x: pt.x, y: pt.y };
   }
+  /** Zoom by `f` (> 1 shows more) around a point in drawing units, keeping the view's shape. */
   _zoom(f, around) {
     const [x, y, w, h] = this._view;
-    const nw = Math.max(VIEWBOX[2] / 6, Math.min(VIEWBOX[2] * 2.5, w * f));
-    const nh = nw * (VIEWBOX[3] / VIEWBOX[2]);
+    const fitW = this._fitW || VIEWBOX[2];
+    const nw = Math.max(Math.min(VIEWBOX[2], fitW) / 8, Math.min(Math.max(VIEWBOX[2], fitW) * 2.5, w * f));
+    const nh = nw * (h / w);
     const c = around || { x: x + w / 2, y: y + h / 2 };
-    this._view = [c.x - (c.x - x) * (nw / w), c.y - (c.y - y) * (nh / h), nw, nh];
-    this._menu = null;
-    this._render();
+    this._setView([c.x - (c.x - x) * (nw / w), c.y - (c.y - y) * (nh / h), nw, nh]);
+  }
+  _setView(v) {
+    this._view = v;
+    if (this._svg) this._svg.setAttribute("viewBox", v.map(fmt).join(" "));
+    if (this._menu) { this._menu = null; const m = this.querySelector("div.menu"); if (m) m.remove(); }
   }
   /** The drawing's screen size and whether the Key covers its left (for ringsView). On a phone
    * the drawing pans inside its own box, so the design's shape is kept. */
@@ -1400,34 +1672,54 @@ export class TfsPowerMap extends Base {
   }
   _fit() {
     const sc = this._sc;
-    this._view = (sc && sc.mode === "network" && this._fitView(sc))
+    this._view = (sc && sc.mode !== "rings" && this._fitView(sc))
       || (sc && sc.mode === "rings" ? ringsView(sc.ringF || 1, this._ringBox()) : VIEWBOX.slice());
     this._render();
   }
   _fitView(sc) {
-    if (!sc || sc.mode !== "network" || !sc.pos.size) return null;
+    if (!sc || sc.mode === "rings" || !sc.pos.size) return null;
     let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
     for (const p of sc.pos.values()) { x0 = Math.min(x0, p.x); y0 = Math.min(y0, p.y); x1 = Math.max(x1, p.x); y1 = Math.max(y1, p.y); }
-    // leave room for the Key on the left when it is open, and for labels under the shapes
-    const padL = this._keyOpen && !phoneNow() ? 330 : 70;
-    x0 -= padL; x1 += 90; y0 -= 50; y1 += 70;
-    const ar = VIEWBOX[3] / VIEWBOX[2];
-    let w = Math.max(500, x1 - x0), h = w * ar;
+    // room for names under the shapes; and, when the Key is open, for the Key — measured in
+    // SCREEN pixels, since the Key does not grow or shrink with the drawing
+    x0 -= 80; x1 += 95; y0 -= 40; y1 += 55;
+    const ar = (this._crowded && !phoneNow() ? TALL_H : VIEWBOX[3]) / VIEWBOX[2];
+    const sw = (this._svg && this._svg.clientWidth) || this.clientWidth || 1000;
+    const keyPx = this._keyOpen && !phoneNow() ? KEY_PX + 24 : 0;
+    const share = Math.max(0.4, (sw - keyPx) / sw);
+    let w = Math.max(500, (x1 - x0) / share), h = w * ar;
     if (y1 - y0 > h) { h = y1 - y0; w = h / ar; }
-    const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2;
-    return [cx - w / 2, cy - h / 2, w, h];
+    const used = (x1 - x0), free = w * share;
+    const left = x0 - w * (1 - share) - (free - used) / 2;
+    const cy = (y0 + y1) / 2;
+    this._fitW = w;
+    return [left, cy - h / 2, w, h];
   }
   _wirePointer(s) {
+    // Scroll, trackpad scroll or pinch zooms around the pointer, as on the Samples page.
+    s.addEventListener("wheel", (e) => {
+      e.preventDefault();
+      const d = e.deltaMode === 1 ? e.deltaY * 0.05 : e.deltaMode ? e.deltaY : e.deltaY * 0.002;
+      this._zoom(Math.exp(e.ctrlKey ? d * 5 : d), this._toSvg(e));
+    }, { passive: false });
+    // Safari's own pinch events
+    s.addEventListener("gesturestart", (e) => { e.preventDefault(); this._g0 = { view: this._view.slice(), at: this._toSvg(e) }; });
+    s.addEventListener("gesturechange", (e) => {
+      e.preventDefault();
+      if (!this._g0 || !e.scale) return;
+      this._view = this._g0.view.slice();
+      this._zoom(1 / e.scale, this._g0.at);
+    });
+    s.addEventListener("gestureend", (e) => { e.preventDefault(); this._g0 = null; });
     s.addEventListener("pointerdown", (e) => {
       if (e.button === 2) return;
       const node = e.target.closest && e.target.closest("[data-node]");
-      const bubble = e.target.closest && e.target.closest("[data-group]");
       const touch = e.pointerType === "touch";
-      this._ptr = { id: e.pointerId, node: node ? node.getAttribute("data-node") : null, group: bubble ? bubble.getAttribute("data-group") : null,
+      this._ptr = { id: e.pointerId, node: node ? node.getAttribute("data-node") : null, group: null,
         x: e.clientX, y: e.clientY, moved: false, touch, view: this._view.slice(), start: this._toSvg(e), long: false };
       if (!touch) { try { s.setPointerCapture(e.pointerId); } catch { /* not capturable */ } }
       clearTimeout(this._lpTimer);
-      if (touch && this._ptr.node) {
+      if (touch && this._ptr.node && this._isReal(this._ptr.node)) {
         const id = this._ptr.node;
         this._lpTimer = setTimeout(() => { if (this._ptr && !this._ptr.moved) { this._ptr.long = true; this._openMenu(id, { clientX: e.clientX, clientY: e.clientY }); } }, 550);
       }
@@ -1440,14 +1732,22 @@ export class TfsPowerMap extends Base {
       if (!p.moved || p.touch) return;      // on touch the box scrolls natively
       const now = this._toSvg(e);
       if (!now || !p.start) return;
-      if (p.node && this.layout === "network" && this._sc && this._sc.mode === "network") {
-        const b = NET_BOX;
-        const np = { x: Math.max(VIEWBOX[0] + 20, Math.min(VIEWBOX[0] + VIEWBOX[2] - 20, now.x)), y: Math.max(b.y0 - 30, Math.min(VIEWBOX[3] - 20, now.y)) };
-        this._dragPos.set(p.node, np);
-        this._sc.pos.set(p.node, np);
-        this._moveNode(p.node, np);
+      if (p.node && this.layout === "network" && this._sc && this._sc.mode !== "rings") {
+        const n = this._sc.pos.get(p.node);
+        if (!n) return;
+        const np = { x: now.x, y: now.y };
+        const sim = this._force && this._force.sim;
+        if (sim) {
+          // the Samples drag: hold the actor under the pointer and let the others make room
+          if (!p.dragged) sim.alphaTarget(FORCE.dragAlpha).restart();
+          n.fx = np.x; n.fy = np.y;
+        } else {
+          n.x = np.x; n.y = np.y;
+          this._moveNode(p.node, np);
+        }
+        this._pins.set(p.node, np);
         p.dragged = np;
-      } else if (!p.node && !p.group) {
+      } else if (!p.node) {
         // pan: move the viewBox by the pointer's travel in drawing units (from the start view)
         const [vx, vy, vw, vh] = p.view;
         const rect = s.getBoundingClientRect();
@@ -1461,16 +1761,14 @@ export class TfsPowerMap extends Base {
       if (!p || p.id !== e.pointerId) return;
       this._ptr = null;
       clearTimeout(this._lpTimer);
+      if (p.dragged && this._force && this._force.sim) this._force.sim.alphaTarget(0);
       if (cancelled || p.long) return;
-      if (p.dragged) { this._emit("tfs-actor-move", { node_id: p.node, x: Math.round(p.dragged.x * 10) / 10, y: Math.round(p.dragged.y * 10) / 10 }); return; }
-      if (p.moved) return;
-      if (p.group) {
-        const sc = this._sc;
-        const b = sc && sc.groups ? bubbleLayout(sc.groups, { cap: this._allGroups ? Infinity : 12 }).find((x) => x.key === p.group) : null;
-        if (b) this._openGroup(b);
+      if (p.dragged) {
+        if (this._isReal(p.node)) this._emit("tfs-actor-move", { node_id: p.node, x: Math.round(p.dragged.x * 10) / 10, y: Math.round(p.dragged.y * 10) / 10 });
         return;
       }
-      if (p.node) { this._select(p.node); return; }
+      if (p.moved) return;
+      if (p.node) { this._activate(p.node); return; }
       if (this._menu || this._selected) { this._menu = null; this._select(null); }
     };
     s.addEventListener("pointerup", (e) => end(e, false));
