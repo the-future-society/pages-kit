@@ -1160,7 +1160,10 @@ export class TfsPowerMap extends Base {
     this._force = { key, pos, sim, d3: hasD3() };
     this._forceCache.set(key, this._force);
     if (this._forceCache.size > 12) this._forceCache.delete(this._forceCache.keys().next().value);
-    if (!prev || !prev.size || [...pos.keys()].filter((id) => !prev.has(id)).length > pos.size / 2) this._fitNext = true;
+    // A new drawing is fitted to the panel — also when only its links changed (the countries
+    // map's forums arrive a moment after the countries; unfitted, unlinked countries drifted off
+    // the edge) — unless the viewer has zoomed or panned since the last fit.
+    if (!this._userView || !prev || !prev.size || [...pos.keys()].filter((id) => !prev.has(id)).length > pos.size / 2) this._fitNext = true;
     return pos;
   }
 
@@ -1254,7 +1257,7 @@ export class TfsPowerMap extends Base {
     } else if (sc.groupLabel !== null) {
       section.appendChild(el("div", { class: "banner info" }, [
         el("span", { class: "grow" }, [el("b", { text: sc.groupLabel }), ` · ${sc.actors.length} ${sc.actors.length === 1 ? "actor" : "actors"}`]),
-        el("button", { type: "button", class: "quietbtn", text: "Back to all groups", onclick: () => { this._group = null; this._view = VIEWBOX.slice(); this._select(null); } }),
+        el("button", { type: "button", class: "quietbtn", text: "Back to all groups", onclick: () => { this._group = null; this._userView = false; this._view = VIEWBOX.slice(); this._select(null); } }),
       ]));
     } else if (layout === "network" && this._showAll && sc.all.length > GROUP_THRESHOLD) {
       section.appendChild(el("div", { class: "banner info" }, [
@@ -1409,7 +1412,7 @@ export class TfsPowerMap extends Base {
         class: linkClass(l) + (l.derived ? " crm" : "") + (dim ? " dim" : ""), d: this._linkD(sc, l, i, lanes),
         "stroke-width": linkWidth(l), "stroke-dasharray": k.dash || null,
         "stroke-linecap": l.kind === "communicates" ? "round" : null,
-        "marker-end": k.arrow ? `url(#${arrowId})` : null,
+        "marker-end": k.arrow && !l.derived ? `url(#${arrowId})` : null,
       }, [svg("title", { text: linkTitle(l, nameOf) + (l.derived ? " (from the CRM)" : "") })]);
       this._linkEls.push({ l, i, p, lanes });
       g.appendChild(p);
@@ -1470,6 +1473,7 @@ export class TfsPowerMap extends Base {
   }
 
   _openGroup(key) {
+    this._userView = false;
     this._group = key;
     this._selected = null;
     this._menu = null;
@@ -1649,6 +1653,7 @@ export class TfsPowerMap extends Base {
   }
   /** Zoom by `f` (> 1 shows more) around a point in drawing units, keeping the view's shape. */
   _zoom(f, around) {
+    this._userView = true;
     const [x, y, w, h] = this._view;
     const fitW = this._fitW || VIEWBOX[2];
     const nw = Math.max(Math.min(VIEWBOX[2], fitW) / 8, Math.min(Math.max(VIEWBOX[2], fitW) * 2.5, w * f));
@@ -1671,6 +1676,7 @@ export class TfsPowerMap extends Base {
     return { w, h: Math.max(480, (w * VIEWBOX[3]) / VIEWBOX[2]), keyOpen: !!this._keyOpen };
   }
   _fit() {
+    this._userView = false;
     const sc = this._sc;
     this._view = (sc && sc.mode !== "rings" && this._fitView(sc))
       || (sc && sc.mode === "rings" ? ringsView(sc.ringF || 1, this._ringBox()) : VIEWBOX.slice());
@@ -1753,6 +1759,7 @@ export class TfsPowerMap extends Base {
         const rect = s.getBoundingClientRect();
         const kx = vw / rect.width, ky = vh / rect.height;
         this._view = [vx - (e.clientX - p.x) * kx, vy - (e.clientY - p.y) * ky, vw, vh];
+        this._userView = true;
         s.setAttribute("viewBox", this._view.map(fmt).join(" "));
       }
     });
