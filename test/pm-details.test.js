@@ -92,3 +92,15 @@ test("options that depend on the record come with it (a map's own groups), in an
   assert.equal(recordOptions(null, "grouping"), null);
   assert.ok(NEW_VALUE.length > 1 && NEW_VALUE.charCodeAt(0) === 0, "the New… value can never collide with a real group name");
 });
+
+test("1.9.2: a link ended today is not in force; link headings name the whole actor; Escape closes an open form", async () => {
+  const { readFile } = await import("node:fs/promises");
+  const src = await readFile(new URL("../pm-details.js", import.meta.url), "utf8");
+  assert.match(src, /String\(l\.valid_to\) > today\(\)/, "in force only before the end date (src/power_maps/links.py)");
+  assert.doesNotMatch(src, /String\(l\.valid_to\) >= today\(\)/);
+  assert.doesNotMatch(src, /split\(\/\\s\+\/\)\[0\]/, "never the first word of a name");
+  assert.match(src, /e\.key !== "Escape" \|\| !this\._editing/);
+  // 1.9.3: heard on the document — focus sits on the page body after the clicked row redraws.
+  assert.match(src, /doc\.addEventListener\("keydown", this\._onEsc\)/);
+  assert.match(src, /removeEventListener\("keydown", this\._onEsc\)/);
+});

@@ -374,3 +374,16 @@ test("a status field: `status`, or any single dropdown whose options carry colou
   assert.equal(isStatusField({ name: "urgency", kind: "dropdown", multi: false, options: [{ value: "High", label: "High" }] }), false);
   assert.equal(isStatusField({ name: "status", kind: "dropdown", multi: true }), false);
 });
+
+test("1.9.2: presets are not unsaved changes — a preset create says nothing, a typed edit counts", () => {
+  // The List view's "New judgement" opened saying "4 unsaved changes" before anything was typed.
+  const fresh = formView({ ...base, isUpdate: false, dirtyCount: 4, userDirty: 0 });
+  assert.equal(fresh.footer, null);
+  assert.equal(formView({ ...base, isUpdate: false, dirtyCount: 5, userDirty: 1 }).footer.text, "1 unsaved change");
+  // An edit pre-filled by the page (End link: end date = today) can be saved as it stands.
+  const pre = formView({ ...base, isUpdate: true, dirtyCount: 1, userDirty: 0 });
+  assert.equal(pre.footer, null);
+  assert.deepEqual(btns(pre), { close: "Cancel", save: "Save changes", disabled: false, busy: false });
+  // Without userDirty the old behaviour holds.
+  assert.equal(formView({ ...base, isUpdate: true, dirtyCount: 2 }).footer.text, "2 unsaved changes");
+});

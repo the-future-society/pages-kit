@@ -526,3 +526,9 @@ test("d3 comes from cdnjs at an exact version, and the kit works without it", as
   assert.equal(hasD3(), false);
   assert.equal(await loadD3(null), null, "no document: no d3, no error");
 });
+
+test("1.9.2: the grouped banner counts countries, not the No country bucket", async () => {
+  const { readFile } = await import("node:fs/promises");
+  const src = await readFile(new URL("../power-map.js", import.meta.url), "utf8");
+  assert.ok(src.includes('gc = sc.groups.filter((g) => g.key !== "\\u0000none").length'));
+});

@@ -1263,7 +1263,8 @@ export class TfsPowerMap extends Base {
       ]));
     }
     if (sc.mode === "bubbles") {
-      const n = sc.all.length, gc = sc.groups.length, by = this.getAttribute("group-by") || groupingOf(sc.all);
+      // The "No country" bucket is not a country (1.9.2): the page's header counts the same way.
+      const n = sc.all.length, gc = sc.groups.filter((g) => g.key !== "\u0000none").length, by = this.getAttribute("group-by") || groupingOf(sc.all);
       const word = by === "country" ? (gc === 1 ? "country" : "countries") : (gc === 1 ? "group" : "groups");
       section.appendChild(el("div", { class: "banner info" }, [
         el("span", { class: "grow" }, [el("b", { text: `${n} actors in ${gc} ${word}` }),

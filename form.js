@@ -490,6 +490,9 @@ function baseView(o = {}) {
     shownNames = [], now = Date.now(), loadError = null, localErrors = null,
     rereading = false, rereadFailed = false, confirmation = null, source = null,
   } = o;
+  // What the PERSON changed (1.9.2): a page's presets — a create's map, actor and date, an
+  // edit's pre-filled end date — are sent with the save but are not "unsaved changes".
+  const userDirty = typeof o.userDirty === "number" ? o.userDirty : dirtyCount;
   const r = receipt || {};
   const label = saveLabel || (isUpdate ? "Save changes" : `Add ${noun}`);
   const view = {
@@ -523,9 +526,10 @@ function baseView(o = {}) {
     if (!isUpdate) {
       view.close.label = "Cancel";
       if (missing) { view.footer = { text: addPhrase(missing) }; view.save.disabled = true; }
-      else if (dirtyCount) view.footer = { text: countLabel(dirtyCount) };
+      else if (userDirty) view.footer = { text: countLabel(userDirty) };
     } else {
-      view.footer = { text: countLabel(dirtyCount) };
+      // A pre-filled edit (nothing typed yet) can be saved as it stands: no "No changes" line.
+      view.footer = userDirty || !dirtyCount ? { text: countLabel(userDirty) } : null;
       view.save.disabled = dirtyCount === 0;
       dirtyClose();
     }
@@ -1988,8 +1992,11 @@ export class TfsRecordForm extends Base {
     const useMore = attr == null || !String(attr).trim();
     const more = [];
     for (const f of shown) {
+      const own = edit ? (rec.values || {})[f.name] : undefined;
+      // On an edit a preset fills a field the record leaves EMPTY (an "End link" form's end date
+      // = today); the record's own value always wins. It is sent with the save like a typed one.
       const start = f.name in prefill ? prefill[f.name]
-        : edit ? (rec.values || {})[f.name]
+        : edit ? (isBlank(own) && f.name in presets && (rec.editable || {})[f.name] === true ? presets[f.name] : own)
           : f.name in presets ? presets[f.name]
             : (f.kind === "linked" && typeof f.default === "string") ? null : f.default;
       const ed = edit ? (rec.editable || {})[f.name] : true;
@@ -2007,6 +2014,7 @@ export class TfsRecordForm extends Base {
     // What the form holds before the person touches it (a create form's presets and defaults
     // already count as "changes"), so `editing` means the PERSON changed something.
     try { this._startChanges = JSON.stringify(this.changes()); } catch { this._startChanges = null; }
+    try { this._startValues = JSON.parse(JSON.stringify(this.currentValues())); } catch { this._startValues = null; }
     this._paint(this.machine);
   }
 
@@ -2186,6 +2194,13 @@ export class TfsRecordForm extends Base {
     return out;
   }
 
+  /** How many fields the person changed since the form opened (presets and defaults excluded). */
+  _userDirty(current) {
+    const start = this._startValues;
+    if (!start) return Object.keys(this.changes()).length;
+    return Object.keys(dirtyFields(start, current)).length;
+  }
+
   /** What a save would send now (only changed fields). */
   changes() { return payloadFor(this._byName || {}, this._initial, this.currentValues()); }
   /** True while the person is mid-edit: a save in flight or waiting, or — on a form that is
@@ -2239,7 +2254,8 @@ export class TfsRecordForm extends Base {
     const missing = !edit ? missingRequired(this._shown, current) : null;
     const view = formView({
       phase: "ready", state: m.state, receipt: m.receipt, isUpdate: edit, tokenStale: m.tokenStale,
-      dirtyCount: Object.keys(changes).length, missing: missing ? (missing.label || missing.name) : null,
+      dirtyCount: Object.keys(changes).length, userDirty: this._userDirty(current),
+      missing: missing ? (missing.label || missing.name) : null,
       noun: this.noun, saveLabel: this.getAttribute("save-label"), labelOf: (n) => this._labels[n] || n,
       shownNames: (this._shown || []).map((f) => f.name), localErrors: this._localErrors,
       rereading: this._rereading, rereadFailed: this._rereadFailed,
