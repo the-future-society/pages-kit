@@ -255,7 +255,18 @@ export class TfsActorDetails extends Base {
   get context() { return this._ctx; }
   set context(v) { this._ctx = v || {}; this._render(); }
 
-  connectedCallback() { ensurePmCss(this.ownerDocument); this._render(); }
+  connectedCallback() {
+    ensurePmCss(this.ownerDocument);
+    if (!this._escBound) {
+      // Escape closes the form open in place (1.9.2). A picker's open list takes Escape first.
+      this._escBound = true;
+      this.addEventListener("keydown", (e) => {
+        if (e.key !== "Escape" || !this._editing || e.defaultPrevented) return;
+        e.preventDefault(); e.stopPropagation(); this._editing = null; this._draw();
+      });
+    }
+    this._render();
+  }
 
   _emit(name, detail) { this.dispatchEvent(new CustomEvent(name, { detail, bubbles: true, composed: true })); }
   _act(action, extra = {}) { this._emit("tfs-actor-action", { action, node_id: this._actor && this._actor.node_id, ...extra }); }
@@ -366,7 +377,8 @@ export class TfsActorDetails extends Base {
     out.push(section({ heading: "Scores on this map", table: "power_map_judgement", label: "Judgement", key: "scores" }, this._scores(a, p)));
     if (a.kind === "person" || a.kind === "organization") out.push(section({ heading: "Who at TFS knows them", table: "power_map_judgement", label: "Computed", key: "knows", info: INFO_KNOWS }, this._knows(a, p)));
     const pending = this._pending(a, p);
-    const links = have && Array.isArray(p.links) ? p.links.filter((l) => !l.ai_unconfirmed && (!l.valid_to || String(l.valid_to) >= today())) : [];
+    // In force only BEFORE its end date: a link ended today is gone today (the server agrees).
+    const links = have && Array.isArray(p.links) ? p.links.filter((l) => !l.ai_unconfirmed && (!l.valid_to || String(l.valid_to) > today())) : [];
     out.push(section({ heading: "Links", table: "power_map_link", label: "Link", key: "links", count: have ? links.length : null }, pending ? [pending] : this._links(a, links)));
     if (a.kind === "person" || (have && Array.isArray(p.recent_entries) && p.recent_entries.length)) {
       const ents = (have && p.recent_entries) || [];
@@ -465,14 +477,15 @@ export class TfsActorDetails extends Base {
     const c = this._ctx, lk = (c.labels || {}).linkKinds || {}, bases = (c.labels || {}).bases || {};
     const kids = [];
     const out = links.filter((l) => l.direction === "out"), inn = links.filter((l) => l.direction === "in");
-    const short = String(a.name || "").split(/\s+/)[0];
+    // The whole name (1.9.2): a first word ("ZZ", "European") named nobody.
+    const short = String(a.name || "");
     const researched = (l) => /research/i.test(String(l.source || l.note || ""));
     const meta = (l) => {
       const words = [STRENGTH[l.strength], l.basis ? (bases[l.basis] || human(l.basis)).toLowerCase() : ""].filter(Boolean).join(" · ");
       const m = el("span", { class: "meta" });
       if (researched(l)) m.append(el("span", { class: "ktag", style: "background:var(--res-soft);color:var(--res)", text: "Researched" }));
       if (words) m.append(el("span", { class: "basis", text: words }));
-      if (c.editable && l.id) m.append(el("button", { type: "button", class: "quietbtn", title: "End this link today. It stays in History.", onclick: () => this._act("end-link", { link: l }), text: "End" }));
+      if (c.editable && l.id) m.append(el("button", { type: "button", class: "quietbtn", title: "End this link (the end date starts as today). It stays in History.", onclick: () => this._act("end-link", { link: l }), text: "End" }));
       return m;
     };
     const other = (l) => {
