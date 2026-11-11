@@ -8,6 +8,7 @@ import {
   allowedLinkHref, LINK_REFUSED, badInputMessage, isEditable,
   initialAfterUnreadSave, formLocked, lockedByFieldset, formView, countLabel, addPhrase,
   missingRequired, refusalView, initials, markMatch, isStatusField, nounOf, noMatchText, shortUrl,
+  pickerArgs, closedHeadingAt, CLOSED_HEADING,
 } from "../form.js";
 
 test("only changed fields are sent", () => {
@@ -386,4 +387,40 @@ test("1.9.2: presets are not unsaved changes — a preset create says nothing, a
   assert.deepEqual(btns(pre), { close: "Cancel", save: "Save changes", disabled: false, busy: false });
   // Without userDirty the old behaviour holds.
   assert.equal(formView({ ...base, isUpdate: true, dirtyCount: 2 }).footer.text, "2 unsaved changes");
+});
+
+
+/* ---- 1.10.0: long-closed projects and workstreams on a typed search ---- */
+
+test("include_closed is sent only for an opted-in field AND a typed query", () => {
+  assert.deepEqual(pickerArgs("project", "Blog", true),
+    { entity_type: "project", query: "Blog", limit: 20, include_closed: true });
+  assert.equal("include_closed" in pickerArgs("project", "", true), false);       // empty box: never
+  assert.equal("include_closed" in pickerArgs("project", "Blog", false), false);  // field not opted in
+  assert.deepEqual(pickerArgs("contact", "Ada", false), { entity_type: "contact", query: "Ada", limit: 20 });
+});
+
+test("the closed heading goes once, before the first closed option", () => {
+  const live = { row_id: "i-1", label: "Live" };
+  const old = { row_id: "i-2", label: "Old", closed: true };
+  const older = { row_id: "i-3", label: "Older", closed: true };
+  assert.equal(closedHeadingAt([live, old, older]), 1);
+  assert.equal(closedHeadingAt([old, older]), 0);
+  assert.equal(closedHeadingAt([live]), -1);                 // none closed: no heading
+  assert.equal(closedHeadingAt([live, { ...old, closed: "yes" }]), -1);   // only a real true
+  assert.equal(closedHeadingAt(null), -1);
+  assert.equal(CLOSED_HEADING, "Closed more than a month ago");
+});
+
+test("keyboard navigation walks the options only, so the heading is never active", async () => {
+  // _key moves `_active` modulo `_options.length`; the heading is not in `_options`.
+  const src = (await import("node:fs")).readFileSync(new URL("../form.js", import.meta.url), "utf8");
+  assert.match(src, /this\._active = \(this\._active \+ d \+ this\._options\.length\) % this\._options\.length/);
+  assert.match(src, /role: "presentation", class: "tfs-picker__group"/);
+  assert.doesNotMatch(src, /this\._list\.children\[this\._active\]/);   // index would be off by the heading
+});
+
+test("the form sets include-closed on the picker only when the contract says so", async () => {
+  const src = (await import("node:fs")).readFileSync(new URL("../form.js", import.meta.url), "utf8");
+  assert.match(src, /if \(f\.picker && f\.picker\.closed_on_search === true\) p\.setAttribute\("include-closed", ""\)/);
 });

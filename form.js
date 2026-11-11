@@ -1437,6 +1437,25 @@ export class TfsRichText extends Base {
 
 const PICK_NOUN = { team_member: "team member", project: "project", contact: "contact", organization: "organisation", task: "task" };
 
+/** The heading over long-closed picker options. Keep in step with the server's
+ * `_PICKER_RECENTLY_CLOSED_DAYS` (30) if that number ever changes. */
+export const CLOSED_HEADING = "Closed more than a month ago";
+
+/** Arguments for `search_records_for_picker`. `include_closed` is sent ONLY when the field's
+ * contract opted in (`picker.closed_on_search`) AND something is typed: an empty box is never
+ * widened, and a server that does not serve the flag is never sent an argument it does not
+ * know (1.10.0). */
+export function pickerArgs(entityType, q, includeClosed) {
+  const args = { entity_type: entityType, query: q, limit: 20 };
+  if (includeClosed && q) args.include_closed = true;
+  return args;
+}
+
+/** Index of the first `closed` option (where the closed heading goes), or -1 for none. */
+export function closedHeadingAt(options) {
+  return (options || []).findIndex((o) => o && o.closed === true);
+}
+
 export function noMatchText(entityType, q) {
   if (entityType === "team_member") return `No current team member matches '${q}'. Only current core-team members can be picked.`;
   return `No ${PICK_NOUN[entityType] || "record"} matches '${q}'.`;
@@ -1536,7 +1555,7 @@ export class TfsPicker extends Base {
     let opts;
     try {
       const r = await this.transport.call("search_records_for_picker",
-        { entity_type: this.getAttribute("entity-type"), query: q, limit: 20 });
+        pickerArgs(this.getAttribute("entity-type"), q, this.hasAttribute("include-closed")));
       opts = (r && r.options) || [];
     } catch (e) {
       if (seq !== this._seq) return;
@@ -1579,7 +1598,10 @@ export class TfsPicker extends Base {
         text: this._query ? noMatchText(this.getAttribute("entity-type"), this._query) : "Nothing to pick here yet." }));
     }
     const project = this.getAttribute("entity-type") === "project";
-    this._list.replaceChildren(...this._options.map((o, i) => {
+    // Long-closed matches come last from the server; one heading sets them apart. It is not an
+    // option: no id, role presentation, and keyboard navigation walks `_options`, never it.
+    const headAt = closedHeadingAt(this._options);
+    const rows = this._options.map((o, i) => {
       const name = o.label || o.row_id;
       const [a, m, b] = markMatch(name, this._query);
       const li = h("li", { role: "option", id: `${this._list.id}-${i}`, class: "tfs-picker__opt", "aria-selected": String(i === this._active) },
@@ -1590,10 +1612,15 @@ export class TfsPicker extends Base {
           project ? statusChip(String(o.hint), this._hintColours && this._hintColours.get(String(o.hint)), { small: true }) : String(o.hint)) : null);
       li.addEventListener("mousedown", (e) => { e.preventDefault(); this._pick(o); });
       return li;
-    }));
+    });
+    if (headAt >= 0) {
+      rows.splice(headAt, 0, h("li", { role: "presentation", class: "tfs-picker__group", text: CLOSED_HEADING,
+        onmousedown: (e) => e.preventDefault() }));
+    }
+    this._list.replaceChildren(...rows);
     this._input.setAttribute("aria-activedescendant", this._active >= 0 ? `${this._list.id}-${this._active}` : "");
     this._open();
-    const act = this._list.children[this._active];
+    const act = this._active >= 0 ? this._list.querySelector(`#${this._list.id}-${this._active}`) : null;
     if (act && act.scrollIntoView) act.scrollIntoView({ block: "nearest" });
   }
 
@@ -2058,6 +2085,7 @@ export class TfsRecordForm extends Base {
     if (k === "linked") {
       const p = document.createElement("tfs-picker");
       p.setAttribute("entity-type", (f.picker && f.picker.entity_type) || "");
+      if (f.picker && f.picker.closed_on_search === true) p.setAttribute("include-closed", "");
       p.setAttribute("input-id", id);
       if (f.multi) p.setAttribute("multi", "");
       if (f.add_only) p.setAttribute("add-only", "");

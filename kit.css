@@ -255,6 +255,8 @@ tfs-picker{position:relative}
 .tfs-picker__hint{margin-left:auto;flex:none;display:inline-flex;align-items:center;gap:6px;font-size:12.5px;color:var(--tfs-muted);
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:45%}
 .tfs-picker__opt--chosen .tfs-picker__hint{color:var(--tfs-accent)}
+.tfs-picker__group{list-style:none;margin:6px 0 2px;padding:6px 10px 4px;border-top:1px solid var(--tfs-rule);font-size:12px;font-weight:600;color:var(--tfs-muted);cursor:default}
+.tfs-picker__group:first-child{margin-top:0;border-top:0}
 .tfs-picker__msg{display:flex;align-items:center;gap:8px;margin:0;padding:10px;font-size:13px;line-height:1.45;color:var(--tfs-muted)}
 .tfs-picker__msg--error{color:var(--tfs-error);font-weight:600}
 /* multi-select dropdown options carry a tick box */
